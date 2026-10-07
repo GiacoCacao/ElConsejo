@@ -82,7 +82,7 @@ async function cargar(id) {
   for (const m of msgs) if (m.rol === 'agent' && m.pregunta_id === qActual)
     estado[m.agente_id] = m.error ? 'error' : 'listo';
   if (qActual && panel) sel = (panel.agentes.find(a => estado[a.id]) || {}).id || null;
-  pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro();
+  pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro(); cargarConsumo();
 }
 async function refrescarAgentes() {   // recuentos de pools, sin tocar la conversación
   const ps = await api('/api/paneles'); const p = ps.find(x => panel && x.id === panel.id);
@@ -115,8 +115,8 @@ function geometria() {
   const arco = $('#arco'), W = arco.clientWidth, H = arco.clientHeight, n = panel ? panel.agentes.length : 0;
   const movil = W < 760, cx = W / 2;
   // escritorio: hemiciclo que abraza el atril; móvil: arco compacto arriba y el atril debajo
-  const cy = movil ? Math.min(H * .36, 240) : H - 46;
-  const Rx = movil ? W / 2 - 48 : Math.max(150, W / 2 - 96), Ry = movil ? cy - 62 : Math.max(150, H - 182);
+  const cy = movil ? Math.min(H * .36, 240) + 30 : H - 46;   // móvil: deja sitio a la barra de consumo
+  const Rx = movil ? W / 2 - 48 : Math.max(150, W / 2 - 96), Ry = movil ? cy - 92 : Math.max(150, H - 190);
   const pos = (panel ? panel.agentes : []).map((a, i) => {
     const t = n === 1 ? Math.PI / 2 : Math.PI * (0.9 - 0.8 * i / (n - 1));
     return { a, t, x: cx + Rx * Math.cos(t), y: cy - Ry * Math.sin(t) };
@@ -139,7 +139,7 @@ function pintarArco() {
     d.tabIndex = 0; d.setAttribute('role', 'button'); d.setAttribute('aria-label', `${a.nombre}, ${a.rol}`);
     d.style.cssText = `left:${x}px;top:${y}px;--c:${a.color};--i:${i}`;
     d.innerHTML = `<div class="medallon"><span class="anillo"></span><span class="ini">${esc(monograma(a))}</span><span class="punto"></span></div>
-      <div class="n">${esc(a.nombre)}</div><div class="r">${esc(a.rol)}</div>`
+      <div class="n">${esc(a.nombre)}</div><div class="r" title="${esc(a.rol)}">${esc(a.rol)}</div>`
       + (a.capitulos ? `<div class="pool" title="${a.docs} documentos · ${a.capitulos} capítulos">${a.docs} doc · ${a.capitulos} cap.</div>` : '');
     d.onclick = () => elegir(a.id);
     d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(a.id); } };
@@ -189,6 +189,11 @@ function mover(paso) {
 }
 
 // ---- atril ----
+function gastoAgente(id) {
+  const g = consumoDatos && consumoDatos.agentes.find(x => x.id === id);
+  if (!g || !g.ultima || !g.ultima.llamadas) return '';
+  return `<div class="gasto">${fTok(g.ultima.entrada + g.ultima.salida)} tokens · <b>≈ ${fUSD(g.ultima.coste)}</b>${g.pct != null ? ` · contexto ${nf(g.pct, g.pct < 10 ? 1 : 0)} %` : ''}</div>`;
+}
 const SUGERENCIAS = ['¿Cuáles son los principales riesgos de esta decisión?', 'Valoren pros y contras de la propuesta adjunta.', '¿Qué harían ustedes en mi lugar?'];
 function pintarMesa() {
   const r = $('#respuesta'); r.className = ''; r.style.removeProperty('--c');
@@ -209,7 +214,7 @@ function pintarMesa() {
   const suyos = msgs.filter(x => x.rol === 'agent' && x.agente_id === a.id && x.pregunta_id === qActual).sort((p, q) => p.ronda - q.ronda);
   let h = `<header class="firma" style="--c2:color-mix(in srgb,${a.color} 45%,#c9a96e)">
       <div class="mini">${esc(monograma(a))}</div>
-      <div><div class="quien">${esc(a.nombre)}</div><div class="rol">${esc(a.rol || 'Experto')}</div></div>
+      <div><div class="quien">${esc(a.nombre)}</div><div class="rol">${esc(a.rol || 'Experto')}</div>${gastoAgente(a.id)}</div>
       <div class="nav"><button class="icono" data-mv="-1" aria-label="Experto anterior">${ico('izq')}</button><button class="icono" data-mv="1" aria-label="Experto siguiente">${ico('der')}</button></div>
     </header><div class="cuerpo">`;
   for (const m of suyos) {
@@ -309,7 +314,7 @@ $('#chat').onsubmit = async e => {
         if (!vigente()) return null;
         msgs.push(m); estado[id] = m.error ? 'error' : 'listo'; progreso.hechos++;
         if (!sel) sel = id;
-        pintarArco(); pintarMesa(); pintarRegistro();
+        pintarArco(); pintarMesa(); pintarRegistro(); pedirConsumo();
         return m;
       }));
       if (!vigente()) break;
@@ -334,6 +339,92 @@ $('#vaciar').onclick = async () => {
   await api(`/api/paneles/${panel.id}/mensajes`, { method: 'DELETE' }); cargar(panel.id); avisar('Actas vaciadas.');
 };
 
+
+// ---- consumo de la API ----
+let consumoDatos = null, consumoT = null;
+const nf = (x, d = 0) => Number(x || 0).toLocaleString('es', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fTok = n => n < 1000 ? nf(n) : n < 1e6 ? nf(n / 1e3, 1) + ' k' : nf(n / 1e6, n < 1e7 ? 2 : 1) + ' M';
+const fUSD = x => x == null ? '—' : x === 0 ? 'US$ 0' : 'US$ ' + nf(x, x < 0.01 ? 4 : x < 1 ? 3 : 2);
+async function cargarConsumo() {
+  if (!panel) return;
+  try { consumoDatos = await api(`/api/paneles/${panel.id}/consumo`); } catch { return; }
+  pintarConsumo();
+  if (sel) pintarMesa();
+  if ($('#dlgConsumo').open) pintarDetalleConsumo();
+}
+const pedirConsumo = () => { clearTimeout(consumoT); consumoT = setTimeout(cargarConsumo, 350); };
+function pintarConsumo() {
+  const d = consumoDatos; if (!d) return;
+  const s = d.servicio, t = s.tarifa;
+  $('#consumo').hidden = false;
+  $('#cSvc').innerHTML = `<b>${esc(s.proveedor)}</b> ${esc(s.modelo)}`
+    + (t && t.franja ? ` <em class="${s.punta ? 'punta' : ''}" title="${s.punta ? 'Hora punta: tarifa doble' : 'Fuera de hora punta'}">${s.punta ? 'punta' : 'valle'}</em>` : '');
+  $('#consumo .led').classList.toggle('off', !t);
+  const conPct = d.agentes.filter(a => a.pct != null);
+  const max = conPct.sort((a, b) => b.pct - a.pct)[0];
+  $('#cCtxBar').style.width = (max ? Math.min(100, Math.max(1.5, max.pct)) : 0) + '%';
+  $('#cCtxBar').parentElement.classList.toggle('alto', !!max && max.pct > 75);
+  $('#cCtx').textContent = max ? `${nf(max.pct, max.pct < 10 ? 1 : 0)} % · ${fTok(max.contexto_usado)} / ${fTok(max.contexto_max)}` : 'sin uso';
+  $('#cTok').textContent = `↑ ${fTok(d.panel.entrada)}  ↓ ${fTok(d.panel.salida)}`;
+  $('#cCoste').textContent = innerWidth < 760 ? fUSD(d.panel.coste)
+    : d.ultima ? `${fUSD(d.ultima.coste)} última · ${fUSD(d.panel.coste)} panel` : `${fUSD(d.panel.coste)} panel`;
+}
+function pintarDetalleConsumo() {
+  const d = consumoDatos; if (!d) return;
+  const tile = (rot, s, extra = '') => `<div class="tile"><div class="rot">${rot}</div><div class="cifra">${s ? fUSD(s.coste) : '—'}</div>
+    <div class="det">${s ? `${nf(s.llamadas)} llamadas · ↑ ${fTok(s.entrada)} ↓ ${fTok(s.salida)}${s.cache ? ` · caché ${fTok(s.cache)}` : ''}` : 'Sin consultas'}${extra}</div></div>`;
+  const filas = d.agentes.map(a => {
+    const ag = panel.agentes.find(x => x.id === a.id) || {};
+    return `<tr><td><div class="quien"><span style="--c:${ag.color}">${esc(monograma(ag))}</span><div>${esc(a.nombre)}<small>${esc(a.modelo)}${a.tarifa ? '' : ' · sin tarifa'}</small></div></div></td>
+      <td>${a.pct == null ? '—' : `<span class="medidor${a.pct > 75 ? ' alto' : ''}"><i style="width:${Math.min(100, Math.max(1.5, a.pct))}%"></i></span>${nf(a.pct, a.pct < 10 ? 1 : 0)} %`}<small>${a.contexto_usado ? fTok(a.contexto_usado) + ' de ' + fTok(a.contexto_max) : ''}</small></td>
+      <td class="opt">${fTok(a.entrada)}</td><td class="opt">${fTok(a.salida)}</td><td>${nf(a.llamadas)}</td>
+      <td>${a.ultima && a.ultima.llamadas ? fUSD(a.ultima.coste) : '—'}</td><td>${fUSD(a.coste)}</td></tr>`;
+  }).join('');
+  const s = d.servicio;
+  $('#consumoCuerpo').innerHTML = `
+    <div class="tiles">${tile('Última consulta', d.ultima)}${tile('Este panel', d.panel)}${tile('Bibliotecas · resúmenes', d.pools)}${tile('Total general', d.global)}</div>
+    <table class="tabla"><thead><tr><th>Experto</th><th>Contexto (última)</th><th class="opt">Entrada</th><th class="opt">Salida</th><th>Llamadas</th><th>Última</th><th>Acumulado</th></tr></thead>
+    <tbody>${filas}</tbody><tfoot><tr><td>Panel</td><td></td><td class="opt">${fTok(d.panel.entrada)}</td><td class="opt">${fTok(d.panel.salida)}</td><td>${nf(d.panel.llamadas)}</td><td>${d.ultima ? fUSD(d.ultima.coste) : '—'}</td><td>${fUSD(d.panel.coste)}</td></tr></tfoot></table>
+    <p class="nota peq">Costes aproximados en dólares a partir de los tokens que informa la API${d.global.estimado ? ' (algunas llamadas sin datos de uso se han estimado por longitud del texto)' : ''}.
+      ${s.tarifa && s.tarifa.franja ? `Servicio en <b>${s.punta ? 'hora punta' : 'franja valle'}</b> ahora mismo: DeepSeek cobra el doble de 01:00 a 04:00 y de 06:00 a 10:00 UTC, de lunes a viernes; cada llamada se valora con su franja.` : ''}
+      Fuente de las tarifas de serie: ${esc(s.fuente)}.</p>
+    <h3 class="sub">Tarifas por modelo <small class="nota peq" style="margin:0">USD por millón de tokens · editables</small><span class="grow"></span><button type="button" id="nuevaTarifa" class="contorno">${ico('mas')}<span>Añadir modelo</span></button></h3>
+    <table class="tabla" id="tablaTarifas"><thead><tr><th>Modelo</th><th>Contexto</th><th>Entrada</th><th>Caché</th><th>Salida</th><th class="opt">Entrada punta</th><th class="opt">Caché punta</th><th class="opt">Salida punta</th><th></th></tr></thead><tbody></tbody></table>`;
+  pintarTarifas();
+  $('#nuevaTarifa').onclick = () => filaTarifa({ modelo: '', contexto: 128000 }, true);
+}
+async function pintarTarifas() {
+  const r = await api('/api/tarifas');
+  $('#tablaTarifas tbody').innerHTML = '';
+  r.tarifas.forEach(t => filaTarifa(t, false));
+}
+function filaTarifa(t, nueva) {
+  const tr = document.createElement('tr');
+  const n = (k, v) => `<input data-k="${k}" inputmode="decimal" value="${v ?? ''}" placeholder="—">`;
+  tr.innerHTML = `<td>${nueva ? '<input class="mod" data-k="modelo" placeholder="nombre-del-modelo">' : `${esc(t.modelo)}<small>${esc(t.proveedor || '')}</small>`}</td>
+    <td>${n('contexto', t.contexto)}</td><td>${n('entrada', t.entrada)}</td><td>${n('cache', t.cache)}</td><td>${n('salida', t.salida)}</td>
+    <td class="opt">${n('entrada_punta', t.entrada_punta)}</td><td class="opt">${n('cache_punta', t.cache_punta)}</td><td class="opt">${n('salida_punta', t.salida_punta)}</td>
+    <td><button type="button" class="icono" title="Eliminar tarifa">${ico('papelera')}</button></td>`;
+  const guardar = async () => {
+    const modelo = nueva ? tr.querySelector('[data-k=modelo]').value.trim() : t.modelo;
+    if (!modelo) return;
+    const cuerpo = { proveedor: t.proveedor || (nueva ? 'Personalizado' : null), franja: t.franja || null };
+    tr.querySelectorAll('input[data-k]:not([data-k=modelo])').forEach(i => cuerpo[i.dataset.k] = i.value.replace(',', '.'));
+    try { await api(`/api/tarifas/${encodeURIComponent(modelo)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo) });
+      if (nueva) { nueva = false; t = { ...cuerpo, modelo }; } avisar(`Tarifa de ${modelo} guardada.`); cargarConsumo(); }
+    catch (e) { avisar(e.message, true); }
+  };
+  tr.querySelectorAll('input').forEach(i => i.addEventListener('change', guardar));
+  tr.querySelector('button').onclick = async () => {
+    if (nueva) return tr.remove();
+    if (!await confirmar(`¿Eliminar la tarifa de ${t.modelo}? Sus llamadas quedarán sin coste calculado.`, 'Eliminar')) return;
+    await api(`/api/tarifas/${encodeURIComponent(t.modelo)}`, { method: 'DELETE' }); tr.remove(); cargarConsumo();
+  };
+  $('#tablaTarifas tbody').append(tr);
+}
+$('#consumo').onclick = () => { $('#dlgConsumo').showModal(); pintarDetalleConsumo(); };
+$('#cerrarConsumo').onclick = () => $('#dlgConsumo').close();
+
 // ---- bibliotecas (pools por agente) ----
 let poolAg = null, poolDatos = {}, poolTimer = null, abiertos = new Set();
 const VIVO = e => !['listo', 'error'].includes(e);
@@ -351,7 +442,7 @@ async function cargarPools() {
   poolDatos = await api(`/api/paneles/${panel.id}/pools`).catch(() => poolDatos);
   pintarPools();
   if (Object.values(poolDatos).flat().some(d => VIVO(d.estado))) poolTimer = setTimeout(cargarPools, 2000);
-  else refrescarAgentes();
+  else { refrescarAgentes(); pedirConsumo(); }
 }
 function pintarPools() {
   const tabs = $('#poolsTabs'); tabs.innerHTML = '';

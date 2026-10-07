@@ -31,8 +31,10 @@ def falsos(monkeypatch):
     monkeypatch.setattr(fabrica, "buscar", lambda q, ids, limite=6: [])
     monkeypatch.setattr(fabrica, "borrar", lambda fid: None)
 
-    def llamar(msgs, modelo=None, temperatura=None, max_tokens=800):
+    def llamar(msgs, modelo=None, temperatura=None, max_tokens=800, uso=None):
         llamadas.append(msgs)
+        if uso is not None:
+            uso.update(modelo=modelo or "deepseek-flash", entrada=1000, salida=200, cache=400, estimado=False)
         sis = msgs[0]["content"]
         if sis.startswith("Simplificas"):
             return "TITULO: Título IA\nRESUMEN: Resumen simple.\nCLAVES: a, b, c"

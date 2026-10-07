@@ -6,8 +6,10 @@ IMG = os.path.join(DATOS, "img")
 DB = os.path.join(DATOS, "consejo.db")
 
 IA_URL = os.environ.get("CONSEJO_IA_URL", "https://api.deepseek.com/v1").rstrip("/")
-IA_MODELO = os.environ.get("CONSEJO_IA_MODELO", "deepseek-chat")
+IA_MODELO = os.environ.get("CONSEJO_IA_MODELO", "deepseek-flash")
 IA_CLAVE = os.environ.get("CONSEJO_IA_CLAVE", "")
+# DeepSeek razona antes de responder si no se le dice lo contrario: más lento y caro para dictámenes breves
+IA_PENSAR = os.environ.get("CONSEJO_IA_PENSAR", "0") == "1"
 
 FABRICA_URL = os.environ.get("CONSEJO_FABRICA_URL", "").rstrip("/")
 FABRICA_CLAVE = os.environ.get("CONSEJO_FABRICA_CLAVE", "")

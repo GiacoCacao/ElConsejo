@@ -17,6 +17,13 @@ CREATE TABLE IF NOT EXISTS docs(
 CREATE TABLE IF NOT EXISTS capitulos(
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id TEXT, agente_id TEXT, orden INTEGER,
   titulo TEXT, resumen TEXT, claves TEXT, texto TEXT, simplificado INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS consumo(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, panel_id TEXT, agente_id TEXT, pregunta_id INTEGER,
+  tipo TEXT, modelo TEXT, entrada INTEGER, salida INTEGER, cache INTEGER, estimado INTEGER DEFAULT 0);
+CREATE INDEX IF NOT EXISTS i_consumo_panel ON consumo(panel_id);
+CREATE TABLE IF NOT EXISTS tarifas(
+  modelo TEXT PRIMARY KEY, proveedor TEXT, contexto INTEGER, entrada REAL, cache REAL, salida REAL,
+  entrada_punta REAL, cache_punta REAL, salida_punta REAL, franja TEXT);   -- USD por millón de tokens
 CREATE TABLE IF NOT EXISTS semillas(nombre TEXT PRIMARY KEY);   -- paneles de serie ya sembrados
 CREATE INDEX IF NOT EXISTS i_cap_doc ON capitulos(doc_id);
 CREATE INDEX IF NOT EXISTS i_cap_ag ON capitulos(agente_id);
@@ -52,6 +59,8 @@ def init():
         for tabla, col, tipo in MIGRACIONES:
             if col not in {r["name"] for r in c.execute(f"PRAGMA table_info({tabla})")}:
                 c.execute(f"ALTER TABLE {tabla} ADD COLUMN {col} {tipo}")
+        import consumo   # aquí para evitar el import circular
+        consumo.sembrar(c)
         # un reinicio corta los hilos de procesado: que no queden «en curso» para siempre
         c.execute("UPDATE docs SET estado='error', error='Interrumpido por un reinicio; pulsa Reprocesar' "
                   "WHERE estado NOT IN ('listo','error')")

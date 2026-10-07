@@ -10,6 +10,7 @@ from flask import Flask, abort, jsonify, request, send_from_directory
 
 import bd
 import config
+import consumo
 import fabrica
 import ia
 import paneles_base
@@ -330,9 +331,11 @@ def responder(qid, aid):
         except Exception as e:  # noqa: BLE001
             error, texto, msgs = True, f"No se pudo preparar la consulta: {e}"[:400], None
     if not error:
+        uso = {}
         try:
             texto = ia.llamar(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"],
-                              max_tokens=400 if ronda else 800)
+                              max_tokens=400 if ronda else 800, uso=uso)
+            consumo.registrar(panel["id"], aid, qid, "replica" if ronda else "respuesta", uso)
         except Exception as e:  # noqa: BLE001 — se muestra al usuario en la burbuja
             error, texto = True, str(e)[:400]
     with bd.db() as c:
@@ -341,6 +344,40 @@ def responder(qid, aid):
                         (panel["id"], qid, "agent", aid, texto, int(error), ronda,
                          json.dumps(fuentes, ensure_ascii=False), time.time()))
         return jsonify(msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone()))
+
+
+# ---- consumo y tarifas -----------------------------------------------------
+@app.get("/api/paneles/<pid>/consumo")
+def ver_consumo(pid):
+    with bd.db() as c:
+        panel = _panel(c, pid)
+    return jsonify(consumo.resumen(panel))
+
+
+@app.get("/api/tarifas")
+def ver_tarifas():
+    with bd.db() as c:
+        return jsonify(tarifas=list(consumo.tarifas(c).values()), fuente=consumo.FUENTE, modelo=config.IA_MODELO)
+
+
+@app.put("/api/tarifas/<path:modelo>")
+def guardar_tarifa(modelo):
+    modelo = modelo.strip()[:80]
+    try:
+        t = consumo.tarifa_valida(request.get_json(force=True))
+    except (ValueError, TypeError) as e:
+        return jsonify(error=str(e)), 400
+    with bd.db() as c:
+        c.execute(f"INSERT OR REPLACE INTO tarifas(modelo,{','.join(consumo.CAMPOS)}) VALUES(?,{','.join('?' * len(consumo.CAMPOS))})",
+                  (modelo, *[t[k] for k in consumo.CAMPOS]))
+    return jsonify(ok=True)
+
+
+@app.delete("/api/tarifas/<path:modelo>")
+def borrar_tarifa(modelo):
+    with bd.db() as c:
+        c.execute("DELETE FROM tarifas WHERE modelo=?", (modelo,))
+    return "", 204
 
 
 # ---- pools por agente ------------------------------------------------------

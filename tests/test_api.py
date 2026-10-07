@@ -76,3 +76,37 @@ def test_paneles_de_serie_se_siembran_una_vez(cliente):
     cliente.delete(f"/api/paneles/{filo['id']}")
     aplicacion.arrancar()   # un reinicio no lo resucita
     assert "Panel Filosófico" not in [p["nombre"] for p in cliente.get("/api/paneles").get_json()]
+
+
+def test_consumo_y_coste_por_agente(cliente):
+    import consumo
+    p = _panel(cliente)
+    q = _preguntar(cliente, p["id"], "¿Coste?").get_json()["pregunta_id"]
+    for a in p["agentes"][:2]:
+        cliente.post(f"/api/preguntas/{q}/agentes/{a['id']}")
+    r = cliente.get(f"/api/paneles/{p['id']}/consumo").get_json()
+    lex = r["agentes"][0]
+    assert lex["ultima"]["entrada"] == 1000 and lex["contexto_usado"] == 1000 and lex["pct"] == 0.1
+    assert r["ultima"]["llamadas"] == 2 and r["servicio"]["modelo"] == "deepseek-flash"
+    # 600 sin caché + 400 en caché + 200 de salida, en franja valle o punta
+    valle = (600 * .15 + 400 * .003 + 200 * .6) / 1e6
+    assert round(r["ultima"]["coste"], 12) in (round(2 * valle, 12), round(4 * valle, 12))
+    assert r["agentes"][2]["ultima"]["llamadas"] == 0   # no participó en esta consulta
+
+
+def test_franja_punta_de_deepseek():
+    import consumo
+    from datetime import datetime, timezone
+    ts = lambda *a: datetime(*a, tzinfo=timezone.utc).timestamp()
+    assert consumo.es_punta(ts(2026, 10, 7, 8, 30), "deepseek")        # miércoles 08:30 UTC
+    assert not consumo.es_punta(ts(2026, 10, 7, 12, 0), "deepseek")    # miércoles 12:00
+    assert not consumo.es_punta(ts(2026, 10, 10, 8, 30), "deepseek")   # sábado
+    assert not consumo.es_punta(ts(2026, 10, 7, 8, 30), None)
+
+
+def test_tarifas_editables(cliente):
+    r = cliente.put("/api/tarifas/mi-modelo", json={"proveedor": "Otro", "contexto": 200000, "entrada": 3, "salida": 15})
+    assert r.status_code == 200
+    t = {x["modelo"]: x for x in cliente.get("/api/tarifas").get_json()["tarifas"]}
+    assert t["mi-modelo"]["salida"] == 15 and "deepseek-flash" in t
+    assert cliente.put("/api/tarifas/x", json={"entrada": -1, "salida": 1}).status_code == 400

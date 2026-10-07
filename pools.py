@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import bd
 import fabrica
+import consumo
 import ia
 
 MIN_CAP, MAX_CAP, TROZO = 350, 9000, 5000
@@ -130,13 +131,13 @@ def _extracto(texto, n=300):
     return (" ".join(frases[:2]) if frases else plano)[:n].strip()
 
 
-def simplificar(titulo, texto):
+def simplificar(titulo, texto, uso=None):
     """→ (titulo, resumen, claves, hecho_con_ia). Sin IA o si falla, cae a un extracto."""
     if ia.configurada():
         try:
             r = ia.llamar([{"role": "system", "content": SISTEMA_RESUMEN},
                            {"role": "user", "content": f"Capítulo: {titulo}\n\n{texto[:6000]}"}],
-                          temperatura=0.2, max_tokens=300)
+                          temperatura=0.2, max_tokens=300, uso=uso)
             campo = lambda k: (re.search(rf"^{k}:\s*(.+?)(?=^\w+:|\Z)", r, re.M | re.S) or [None, ""])[1].strip()
             resumen = campo("RESUMEN")
             if resumen:
@@ -198,7 +199,9 @@ def procesar(doc_id, datos=None):
         genericos = {f["id"] for f in filas if re.match(r"(Parte \d+|Documento)$", f["titulo"])}
 
         def uno(f):
-            t, r, k, hecho = simplificar(f["titulo"], f["texto"])
+            uso = {}
+            t, r, k, hecho = simplificar(f["titulo"], f["texto"], uso)
+            consumo.registrar(doc["panel_id"], doc["agente_id"], None, "resumen", uso)
             return f["id"], (t if f["id"] in genericos else f["titulo"]), r, k, hecho
 
         with ThreadPoolExecutor(4) as pool:

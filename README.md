@@ -18,12 +18,20 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Consumo y costes
+
+Una barra en la sala muestra el servicio y su franja tarifaria, el contexto usado (máximo de los
+expertos en la última consulta), los tokens y el coste aproximado; al pulsarla se ve el detalle por
+experto, por panel, por bibliotecas y global. El coste sale de los tokens que informa la API (`usage`)
+y de la tabla de tarifas (USD por millón de tokens), que se puede editar y ampliar con otros modelos.
+Las de DeepSeek vienen de serie, con su precio doble en hora punta (01–04 y 06–10 UTC, lunes a viernes).
+
 ## Paneles de serie
 
 Se crean una sola vez al arrancar (`paneles_base.py`); si se borran, no vuelven: **Empresarial**,
 **Marketing y Ventas**, **Técnico Moderno**, **Psicológico**, **Financiero**, **Filosófico** (con
-materialismo filosófico y teología, entre otras escuelas) **Importaciones a Venezuela**, **Político**, **Militar**, **Internacionalistas y Diplomáticos** y
-**Periodistas**, con seis
+materialismo filosófico y teología, entre otras escuelas) **Importaciones a Venezuela**, **Político**, **Militar**, **Internacionalistas y Diplomáticos**,
+**Periodistas**, **Diseño Gráfico**, **Infraestructura IT**, **Electrónica** y **Electricidad**, con seis
 expertos cada uno.
 
 ## Puesta en marcha
@@ -37,7 +45,7 @@ curl http://TU_IP:8190/salud
 
 | Variable | Para qué |
 |---|---|
-| `CONSEJO_IA_URL` / `CONSEJO_IA_MODELO` / `CONSEJO_IA_CLAVE` | endpoint compatible con OpenAI. Para analizar imágenes hace falta un modelo con visión (se puede fijar por agente) |
+| `CONSEJO_IA_URL` / `CONSEJO_IA_MODELO` / `CONSEJO_IA_CLAVE` / `CONSEJO_IA_PENSAR` | endpoint compatible con OpenAI. Por defecto `deepseek-flash` (con visión). `CONSEJO_IA_PENSAR=1` activa el razonamiento de DeepSeek |
 | `CONSEJO_FABRICA_URL` / `CONSEJO_FABRICA_CLAVE` | fábrica de documentos (obligatoria para PDF/pools) |
 
 ## Fábrica

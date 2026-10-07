@@ -42,6 +42,12 @@
 <main id="escena">
   <div id="fondo" aria-hidden="true"></div>
   <a class="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
+  <button id="consumo" class="consumo" type="button" title="Consumo de la API y costes aproximados — pulse para ver el detalle" hidden>
+    <span class="c-svc"><i class="led"></i><span id="cSvc"></span></span>
+    <span class="c-blq"><span class="rot">Contexto</span><span class="medidor"><i id="cCtxBar"></i></span><span id="cCtx" class="val"></span></span>
+    <span class="c-blq c-tok"><span class="rot">Tokens</span><span id="cTok" class="val"></span></span>
+    <span class="c-blq"><span class="rot">Coste ≈</span><span id="cCoste" class="val oro"></span></span>
+  </button>
   <svg id="hemiciclo" aria-hidden="true"></svg>
   <div id="arco"></div>
 
@@ -118,6 +124,15 @@
       <button type="submit" id="guardar" class="dorado"><span class="etq">Guardar</span></button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dlgConsumo" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre">Uso de la API</div><h2>Consumo y costes</h2></div>
+    <span class="grow"></span>
+    <button id="cerrarConsumo" class="icono" data-i="x" aria-label="Cerrar"></button>
+  </div>
+  <div id="consumoCuerpo"></div>
 </dialog>
 
 <dialog id="confirmar" class="modal estrecho">
