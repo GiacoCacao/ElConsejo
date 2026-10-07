@@ -3,71 +3,125 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07080b">
 <title>El Consejo</title>
+<link rel="preload" href="/static/fuentes/cormorant.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/static/fuentes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2307080b'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23c9a96e' stroke-width='1.5'/%3E%3Ctext x='32' y='42' font-family='Georgia,serif' font-size='28' fill='%23e6d3a8' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/consejo.css">
 </head>
 <body>
-<header>
-  <h1>🏛️ El Consejo</h1>
-  <nav id="paneles"></nav>
-  <button id="nuevo" class="ghost">+ Panel</button>
-  <span class="grow"></span>
-  <button id="editar" class="ghost">⚙ Editar panel</button>
-  <button id="abrirPools" class="ghost">📚 Pools</button>
-  <button id="historial" class="ghost">📜 Historial</button>
+<header class="barra">
+  <a class="marca" href="/" aria-label="El Consejo">
+    <svg class="sello" viewBox="0 0 48 48" aria-hidden="true">
+      <circle cx="24" cy="24" r="22.5" />
+      <circle cx="24" cy="24" r="18.5" class="fino" />
+      <path d="M11 30 A13 13 0 0 1 37 30" class="fino" />
+      <text x="24" y="30.5">C</text>
+    </svg>
+    <span class="nombre">
+      <span class="titulo">El Consejo</span>
+      <span class="lema">Consejo de expertos</span>
+    </span>
+  </a>
+  <nav id="paneles" class="paneles" aria-label="Paneles"></nav>
+  <div class="acciones">
+    <button id="abrirPools" class="enlace" data-i="libros" title="Bibliotecas de conocimiento (pools) de cada experto">Bibliotecas</button>
+    <button id="historial" class="enlace" data-i="actas" title="Historial de la conversación">Actas</button>
+    <button id="editar" class="enlace" data-i="ajustes" title="Configurar este panel">Configurar</button>
+    <button id="nuevo" class="contorno" data-i="mas">Nuevo panel</button>
+  </div>
 </header>
 
 <main id="escena">
+  <svg id="hemiciclo" aria-hidden="true"></svg>
   <div id="arco"></div>
-  <section id="mesa">
-    <div id="descripcion"></div>
-    <div id="respuesta" class="vacia">Haz una pregunta al consejo.<br><small>Cada experto responderá desde su especialidad. Pulsa uno para leer su respuesta.</small></div>
+
+  <section id="mesa" aria-live="polite">
+    <div id="descripcion" class="descripcion"></div>
+    <article id="respuesta"></article>
   </section>
+
   <form id="chat" autocomplete="off">
     <div id="adjuntos"></div>
-    <div class="opciones">
-      <label class="dialogo" title="Los expertos leen las respuestas de sus colegas y replican"><input id="dialogo" type="checkbox"> 💬 Diálogo entre expertos</label>
-      <label id="lrondas" hidden>réplicas <select id="rondas"><option>1</option><option>2</option><option>3</option></select></label>
+    <div class="campo">
+      <label class="adjuntar" title="Adjuntar imágenes o documentos (PDF, DOCX, TXT…)">
+        <span data-i="clip"></span>
+        <input id="archivos" type="file" accept="image/*,.pdf,.docx,.txt,.md,.odt,.rtf" multiple hidden>
+      </label>
+      <textarea id="texto" rows="1" placeholder="Plantee su consulta al Consejo…"></textarea>
+      <button id="enviar" type="submit" class="dorado"><span class="etq">Consultar</span><span data-i="flecha"></span></button>
     </div>
-    <div class="fila">
-      <label class="clip" title="Adjuntar imágenes o documentos (PDF, DOCX, TXT…)">📎<input id="archivos" type="file" accept="image/*,.pdf,.docx,.txt,.md,.odt,.rtf" multiple hidden></label>
-      <textarea id="texto" rows="1" placeholder="Pregunta al consejo… (Enter envía, Shift+Enter salta de línea)"></textarea>
-      <button id="enviar" type="submit">Preguntar</button>
+    <div class="pie">
+      <label class="interruptor" title="Tras responder, cada experto lee a sus colegas y replica">
+        <input id="dialogo" type="checkbox"><span class="pista"></span>Deliberación entre expertos
+      </label>
+      <div id="lrondas" class="segmentos" role="radiogroup" aria-label="Réplicas" hidden>
+        <span class="rot">Réplicas</span>
+        <button type="button" data-r="1">I</button><button type="button" data-r="2">II</button><button type="button" data-r="3">III</button>
+      </div>
+      <span class="grow"></span>
+      <span class="atajo">Intro para enviar · Mayús + Intro, nueva línea</span>
     </div>
   </form>
 </main>
 
-<aside id="lateral" hidden>
-  <div class="cab"><b>Historial</b><span class="grow"></span>
-    <button id="vaciar" class="ghost">Vaciar</button><button id="cerrar" class="ghost">✕</button></div>
+<aside id="lateral" class="lateral" hidden aria-label="Actas">
+  <div class="cab">
+    <div><div class="sobre">Registro</div><h2>Actas de la sesión</h2></div>
+    <span class="grow"></span>
+    <button id="vaciar" class="enlace" data-i="papelera">Vaciar</button>
+    <button id="cerrar" class="icono" data-i="x" aria-label="Cerrar"></button>
+  </div>
   <div id="registro"></div>
 </aside>
 
-<dialog id="pools">
-  <div class="cab"><h2>📚 Pools de conocimiento</h2><span class="grow"></span><button id="cerrarPools" class="ghost">✕</button></div>
-  <p class="nota" id="notaPools">Cada agente tiene su propia biblioteca. Los documentos se envían a la fábrica, se dividen en
-    capítulos, se simplifican, se ordenan y se indexan; el agente consulta los capítulos pertinentes al responder.</p>
-  <div id="poolsTabs"></div>
+<dialog id="pools" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre">Pools de conocimiento</div><h2>Bibliotecas de los expertos</h2></div>
+    <span class="grow"></span>
+    <button id="cerrarPools" class="icono" data-i="x" aria-label="Cerrar"></button>
+  </div>
+  <p class="nota" id="notaPools">Cada experto consulta únicamente su propia biblioteca. Los documentos se procesan en la fábrica,
+    se dividen en capítulos, se simplifican, se ordenan y se indexan; al deliberar, el experto recurre a los capítulos pertinentes y los cita.</p>
+  <div id="poolsTabs" class="pestanas"></div>
   <div id="poolsCuerpo"></div>
 </dialog>
 
-<dialog id="editor">
+<dialog id="editor" class="modal ancho">
   <form method="dialog" id="formEditor">
-    <h2 id="tituloEditor">Panel</h2>
-    <label>Nombre <input name="nombre" required></label>
-    <label>Descripción <input name="descripcion"></label>
-    <label>Contexto común (lo reciben todos los agentes)
+    <div class="cab">
+      <div><div class="sobre" id="sobreEditor">Panel</div><h2 id="tituloEditor">Configurar panel</h2></div>
+      <span class="grow"></span>
+      <button type="button" id="cerrarEditor" class="icono" data-i="x" aria-label="Cerrar"></button>
+    </div>
+    <div class="rejilla2">
+      <label class="fld">Nombre del panel<input name="nombre" required placeholder="Comité de inversión"></label>
+      <label class="fld">Descripción<input name="descripcion" placeholder="Una línea que lo presente"></label>
+    </div>
+    <label class="fld">Mandato común <small>— lo reciben todos los expertos</small>
       <textarea name="contexto" rows="3"></textarea></label>
-    <h3>Agentes <button type="button" id="addAgente" class="ghost">+ Agente</button></h3>
+    <div class="seccion"><h3>Expertos</h3><span class="grow"></span><button type="button" id="addAgente" class="contorno" data-i="mas">Añadir experto</button></div>
     <div id="listaAgentes"></div>
     <div class="botones">
       <button type="button" id="eliminar" class="peligro">Eliminar panel</button>
       <span class="grow"></span>
-      <button type="button" id="cancelar" class="ghost">Cancelar</button>
-      <button type="submit" id="guardar">Guardar</button>
+      <button type="button" id="cancelar" class="enlace">Cancelar</button>
+      <button type="submit" id="guardar" class="dorado"><span class="etq">Guardar</span></button>
     </div>
   </form>
 </dialog>
+
+<dialog id="confirmar" class="modal estrecho">
+  <div class="sobre">Confirmación</div>
+  <p id="confirmarTexto"></p>
+  <div class="botones"><span class="grow"></span>
+    <button type="button" class="enlace" data-v="0">Cancelar</button>
+    <button type="button" class="dorado" data-v="1"><span class="etq">Aceptar</span></button>
+  </div>
+</dialog>
+
+<div id="avisos" aria-live="polite"></div>
 <script src="/static/consejo.js"></script>
 </body>
 </html>

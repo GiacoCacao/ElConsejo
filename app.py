@@ -23,13 +23,13 @@ PANEL_EJEMPLO = {
     "contexto": "Sois un consejo de expertos. Respondéis en español, con criterio propio, "
                 "de forma breve (máximo 120 palabras) y desde vuestra especialidad.",
     "agentes": [
-        {"nombre": "Lex", "rol": "Jurista", "emoji": "⚖️", "color": "#8b9cff",
+        {"nombre": "Lex", "rol": "Jurista", "emoji": "", "color": "#c9a96e",
          "instrucciones": "Analizas riesgos legales, contratos y obligaciones."},
-        {"nombre": "Fiona", "rol": "Finanzas", "emoji": "📊", "color": "#4fd1a5",
+        {"nombre": "Fiona", "rol": "Finanzas", "emoji": "", "color": "#7f9cc9",
          "instrucciones": "Evalúas costes, rentabilidad y riesgo económico."},
-        {"nombre": "Marco", "rol": "Estratega", "emoji": "♟️", "color": "#f6b45c",
+        {"nombre": "Marco", "rol": "Estratega", "emoji": "", "color": "#8fb59a",
          "instrucciones": "Piensas en el largo plazo, alternativas y consecuencias."},
-        {"nombre": "Ada", "rol": "Tecnología", "emoji": "💡", "color": "#ff7aa2",
+        {"nombre": "Ada", "rol": "Tecnología", "emoji": "", "color": "#c27c8e",
          "instrucciones": "Valoras la viabilidad técnica y las herramientas disponibles."},
     ],
 }
@@ -46,7 +46,7 @@ def _agentes_limpios(lista):
             "id": a.get("id") or uuid.uuid4().hex[:8],
             "nombre": nombre[:40],
             "rol": (a.get("rol") or "").strip()[:60],
-            "emoji": (a.get("emoji") or "🙂").strip()[:4],
+            "emoji": (a.get("emoji") or "").strip()[:4],   # monograma; vacío = iniciales
             "color": a.get("color") or "#8b9cff",
             "instrucciones": (a.get("instrucciones") or "").strip()[:4000],
             "modelo": (a.get("modelo") or "").strip()[:80],
