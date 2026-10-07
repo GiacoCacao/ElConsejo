@@ -20,11 +20,14 @@ import fabrica
 import ia
 import paneles_base
 import pools
+import proveedores
 import sesiones
+import asamblea
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 app.register_blueprint(sesiones.bp)
+app.register_blueprint(asamblea.bp)
 app.secret_key = config.SECRETO or os.urandom(32)
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   PERMANENT_SESSION_LIFETIME=timedelta(days=30))
@@ -134,7 +137,7 @@ PANEL_EJEMPLO = {
 
 
 # ---- paneles ---------------------------------------------------------------
-def _agentes_limpios(lista):
+def _agentes_limpios(lista, tope=12):
     out = []
     for a in lista or []:
         nombre = (a.get("nombre") or "").strip()
@@ -147,10 +150,12 @@ def _agentes_limpios(lista):
             "emoji": (a.get("emoji") or "").strip()[:4],   # monograma; vacío = iniciales
             "color": a.get("color") or "#8b9cff",
             "instrucciones": (a.get("instrucciones") or "").strip()[:4000],
-            "modelo": (a.get("modelo") or "").strip()[:80],
+            "modelo": (a.get("modelo") or "").strip()[:120],
+            "proveedor": (a.get("proveedor") or "").strip()[:12],   # vacío = la IA por defecto
             "temperatura": a.get("temperatura") if isinstance(a.get("temperatura"), (int, float)) else None,
+            **({"comite": str(a["comite"])[:60], "comite_id": str(a.get("comite_id") or "")[:12]} if a.get("comite") else {}),
         })
-    return out[:12]
+    return out[:tope]
 
 
 def _quitar_doc(c, d):
@@ -160,8 +165,8 @@ def _quitar_doc(c, d):
     c.execute("DELETE FROM docs WHERE id=?", (d["id"],))
 
 
-def guardar_panel(c, pid, d):
-    agentes = _agentes_limpios(d.get("agentes"))
+def guardar_panel(c, pid, d, tope=12):
+    agentes = _agentes_limpios(d.get("agentes"), tope)
     nombre = (d.get("nombre") or "Panel sin nombre").strip()[:60]
     cuerpo = json.dumps(agentes, ensure_ascii=False)
     if pid:
@@ -174,18 +179,20 @@ def guardar_panel(c, pid, d):
         return pid
     pid = uuid.uuid4().hex[:8]
     orden = c.execute("SELECT COALESCE(MAX(orden),0)+1 FROM paneles").fetchone()[0]
-    c.execute("INSERT INTO paneles VALUES(?,?,?,?,?,?)",
+    c.execute("INSERT INTO paneles(id,nombre,descripcion,contexto,agentes,orden) VALUES(?,?,?,?,?,?)",
               (pid, nombre, d.get("descripcion", ""), d.get("contexto", ""), cuerpo, orden))
     return pid
 
 
 def panel_dict(c, r):
     p = {"id": r["id"], "nombre": r["nombre"], "descripcion": r["descripcion"],
-         "contexto": r["contexto"], "agentes": json.loads(r["agentes"])}
+         "contexto": r["contexto"], "agentes": json.loads(r["agentes"]), "tipo": r["tipo"]}
+    ids = [a["id"] for a in p["agentes"]]
+    # las bibliotecas van por experto (un delegado de la Asamblea conserva la suya)
     cuenta = {x["agente_id"]: (x["d"], x["c"]) for x in c.execute(
-        "SELECT docs.agente_id, COUNT(DISTINCT docs.id) d, COUNT(capitulos.id) c FROM docs "
-        "LEFT JOIN capitulos ON capitulos.doc_id=docs.id WHERE panel_id=? AND ambito='pool' GROUP BY docs.agente_id",
-        (r["id"],))}
+        f"SELECT docs.agente_id, COUNT(DISTINCT docs.id) d, COUNT(capitulos.id) c FROM docs "
+        f"LEFT JOIN capitulos ON capitulos.doc_id=docs.id WHERE ambito='pool' AND docs.agente_id IN ({','.join('?' * len(ids))}) "
+        f"GROUP BY docs.agente_id", ids)} if ids else {}
     for a in p["agentes"]:
         a["docs"], a["capitulos"] = cuenta.get(a["id"], (0, 0))
     return p
@@ -202,7 +209,8 @@ def msg_dict(r):
     return {"id": r["id"], "pregunta_id": r["pregunta_id"], "rol": r["rol"], "agente_id": r["agente_id"],
             "texto": r["texto"], "imagenes": json.loads(r["imagenes"] or "[]"), "error": bool(r["error"]),
             "ronda": r["ronda"] or 0, "adjuntos": json.loads(r["adjuntos"] or "[]"),
-            "fuentes": json.loads(r["fuentes"] or "[]"), "ts": r["ts"], "sesion_id": r["sesion_id"]}
+            "fuentes": json.loads(r["fuentes"] or "[]"), "ts": r["ts"], "sesion_id": r["sesion_id"],
+            "destinatario": r["destinatario"], "modo": r["modo"]}
 
 
 @app.get("/salud")
@@ -259,6 +267,8 @@ def _borrar_conversacion(c, pid):
 @app.delete("/api/paneles/<pid>")
 def borrar(pid):
     with bd.db() as c:
+        if _panel(c, pid).get("tipo") == "asamblea":
+            return jsonify(error="La Asamblea General no se puede eliminar"), 400
         _borrar_conversacion(c, pid)
         # las sesiones con acta se conservan (pueden estar anexadas en otros consejos); el resto se borra
         for s in c.execute("SELECT id FROM sesiones WHERE panel_id=? AND acta IS NULL", (pid,)).fetchall():
@@ -288,8 +298,10 @@ def vaciar(pid):
 def preguntar(pid):
     """Una pregunta con imágenes (las ven los modelos) y documentos (la fábrica extrae su texto)."""
     texto = (request.form.get("texto") or "").strip()
+    destinatario = (request.form.get("destinatario") or "").strip() or None
     with bd.db() as c:
-        _panel(c, pid)
+        if destinatario and destinatario not in {a["id"] for a in _panel(c, pid)["agentes"]}:
+            return jsonify(error="Ese experto no está en este consejo"), 400
     imagenes, documentos = [], []
     for f in request.files.getlist("imagenes"):
         ext = os.path.splitext(f.filename or "")[1].lower()
@@ -338,8 +350,9 @@ def preguntar(pid):
     with bd.db() as c:
         s = sesiones.activa(c, pid)   # sin sesión abierta, consultar abre una con la pregunta como asunto
         sid = s["id"] if s else sesiones.abrir(c, pid, texto[:120] or (adjuntos[0]["nombre"] if adjuntos else "Consulta al Consejo"))
-        cur = c.execute("INSERT INTO mensajes(panel_id,rol,texto,imagenes,adjuntos,ronda,ts,sesion_id) VALUES(?,?,?,?,?,0,?,?)",
-                        (pid, "user", texto, json.dumps(imagenes), json.dumps(adjuntos), time.time(), sid))
+        cur = c.execute("INSERT INTO mensajes(panel_id,rol,texto,imagenes,adjuntos,ronda,ts,sesion_id,destinatario) "
+                        "VALUES(?,?,?,?,?,0,?,?,?)",
+                        (pid, "user", texto, json.dumps(imagenes), json.dumps(adjuntos), time.time(), sid, destinatario))
         qid = cur.lastrowid
         c.execute("UPDATE mensajes SET pregunta_id=id WHERE id=?", (qid,))
         for a in adjuntos:
@@ -380,7 +393,7 @@ def sistema_agente(panel, agente):
             + f"\n\nHoy es {fecha_actual()}. {AVISO_FECHA}").strip()
 
 
-def _mensajes_ia(c, panel, agente, qid, ronda):
+def _mensajes_ia(c, panel, agente, qid, ronda, modo=None, por=None):
     q = c.execute("SELECT * FROM mensajes WHERE id=?", (qid,)).fetchone()
     ses = c.execute("SELECT * FROM sesiones WHERE id=?", (q["sesion_id"],)).fetchone() if q["sesion_id"] else None
     cono, fuentes = pools.conocimiento(agente["id"], q["texto"] or " ".join(
@@ -388,6 +401,9 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
     sistema = sistema_agente(panel, agente)
     if ses:
         sistema += f"\n\nEstás en la sesión nº {ses['numero']} del Consejo. Asunto: {ses['asunto']}."
+        if ses["limite_palabras"]:
+            sistema += (f" Tu tiempo de palabra es de {ses['limite_palabras']} palabras como máximo por intervención: "
+                        "respétalo, como en un parlamento.")
         anexos = sesiones.texto_anexos(c, ses)
         if anexos:
             sistema += ("\n\nSe han anexado a esta sesión actas de otras sesiones o consejos. Tenlas en cuenta y "
@@ -409,7 +425,8 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
         if m["rol"] == "agent" and m["agente_id"] == agente["id"] and not m["error"]:
             if m["pregunta_id"] not in ultimas or (m["ronda"] or 0) >= (ultimas[m["pregunta_id"]]["ronda"] or 0):
                 ultimas[m["pregunta_id"]] = m
-    usuarios = [m for m in previos if m["rol"] == "user"][-config.HISTORIAL:]
+    # las consultas individuales a otro experto no forman parte de lo que este ha oído
+    usuarios = [m for m in previos if m["rol"] == "user" and m["destinatario"] in (None, agente["id"])][-config.HISTORIAL:]
     for u in usuarios:
         msgs.append({"role": "user", "content": _contenido_usuario(c, u, False)})
         if u["id"] in ultimas:
@@ -434,6 +451,16 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
             msgs[-1]["content"][0]["text"] += ("\n\n---\nEn el orden del debate ya han intervenido:\n\n"
                                                + "\n\n".join(previos_turno) + "\n\nAporta tu visión sin repetir lo ya dicho.")
 
+    if modo and ses:   # turno de palabra concedido por la presidencia (Asamblea)
+        aludido_por = next((x for x in panel["agentes"] if x["id"] == por), None)
+        motivo = (f" por alusiones: {aludido_por['nombre']} se ha referido a ti o a tu comité"
+                  if modo == "alusion" and aludido_por else "")
+        msgs.append({"role": "user", "content":
+                     f"Transcripción del debate hasta ahora:\n\n{sesiones.transcripcion(c, ses['id'], panel, 14000)}\n\n"
+                     f"La presidencia te concede la palabra{motivo}. Dirígete a la presidencia y a la Asamblea; responde "
+                     "a lo que te concierna, aporta argumentos nuevos y no repitas lo ya dicho por ti ni por otros."})
+        return msgs, fuentes
+
     if ronda > 0:
         propia = c.execute("SELECT texto FROM mensajes WHERE pregunta_id=? AND rol='agent' AND agente_id=? "
                            "AND ronda=? AND error=0", (qid, agente["id"], ronda - 1)).fetchone()
@@ -456,8 +483,11 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
     return msgs, fuentes
 
 
-def _preparar(qid, aid, ronda):
-    """Lo necesario para que un experto intervenga: panel, agente, pregunta y mensajes para la IA."""
+MODOS = ("palabra", "alusion")
+
+
+def _preparar(qid, aid, ronda, modo=None, por=None):
+    """Lo necesario para que un experto intervenga. `modo`: turno de palabra concedido en la Asamblea."""
     with bd.db() as c:
         q = c.execute("SELECT * FROM mensajes WHERE id=? AND rol='user'", (qid,)).fetchone()
         if not q:
@@ -466,19 +496,26 @@ def _preparar(qid, aid, ronda):
         agente = next((a for a in panel["agentes"] if a["id"] == aid), None)
         if not agente:
             abort(404)
+        ses = c.execute("SELECT * FROM sesiones WHERE id=?", (q["sesion_id"],)).fetchone() if q["sesion_id"] else None
+        if modo:   # cada turno de palabra es una «ronda» nueva, para conservar el orden de intervención
+            ronda = (c.execute("SELECT COALESCE(MAX(ronda),0) FROM mensajes WHERE pregunta_id=?", (qid,)).fetchone()[0] or 0) + 1
+        limite = ses["limite_palabras"] if ses and ses["limite_palabras"] else None
+        tokens = int(limite * 2.2) + 80 if limite else (400 if ronda and not modo else 800)
+        p = {"panel": panel, "agente": agente, "q": q, "ronda": ronda, "modo": modo, "tokens": tokens,
+             "msgs": None, "fuentes": [], "error": None}
         try:
-            msgs, fuentes = _mensajes_ia(c, panel, agente, qid, ronda)
-            return panel, agente, q, msgs, fuentes, None
+            p["msgs"], p["fuentes"] = _mensajes_ia(c, panel, agente, qid, ronda, modo, por)
         except Exception as e:  # noqa: BLE001
-            return panel, agente, q, None, [], f"No se pudo preparar la consulta: {e}"[:400]
+            p["error"] = f"No se pudo preparar la consulta: {e}"[:400]
+        return p
 
 
-def _guardar(panel, q, aid, ronda, texto, error, fuentes):
+def _guardar(p, texto, error):
     with bd.db() as c:
-        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts,sesion_id)"
-                        " VALUES(?,?,?,?,?,?,?,?,?,?)",
-                        (panel["id"], q["id"], "agent", aid, texto, int(error), ronda,
-                         json.dumps(fuentes, ensure_ascii=False), time.time(), q["sesion_id"]))
+        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts,sesion_id,modo)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                        (p["panel"]["id"], p["q"]["id"], "agent", p["agente"]["id"], texto, int(error), p["ronda"],
+                         json.dumps(p["fuentes"], ensure_ascii=False), time.time(), p["q"]["sesion_id"], p["modo"]))
         return msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone())
 
 
@@ -486,20 +523,54 @@ def _ronda():
     return max(0, min(config.MAX_RONDAS, request.args.get("ronda", 0, type=int)))
 
 
+def _modo():
+    m = request.args.get("modo")
+    return (m if m in MODOS else None), (request.args.get("por") or None)
+
+
+REF_COMITE = r"(?:comit[ée]s?|panel(?:es)?|comisi[óo]n|delegaci[óo]n|delegad[oa]s?|bancada|representaci[óo]n|colegas?)\s+(?:de\s+la\s+|de\s+|del\s+)?"
+
+
+def alusiones(panel, aid, texto):
+    """Delegados aludidos: por su nombre o apellido, o cuando se nombra a su comité como tal
+    («el comité jurídico», «la delegación financiera»). El nombre del comité suelto no cuenta: «financiero» o
+    «técnico» son adjetivos corrientes y darían falsas alusiones."""
+    import re
+    t = texto.lower()
+    out = []
+    for a in panel["agentes"]:
+        if a["id"] == aid:
+            continue
+        palabras = [w for w in re.split(r"\s+", a["nombre"]) if not w.endswith(".")]
+        claves = {a["nombre"].lower()} | {w.lower() for w in palabras[-1:] if len(w) >= 4}
+        if len(palabras) == 1 and len(palabras[0]) >= 3:
+            claves.add(palabras[0].lower())
+        hit = any(k and re.search(rf"(?<!\w){re.escape(k)}(?!\w)", t) for k in claves)
+        corto = re.sub(r"^(panel|consejo|comité)\s+(de\s+|del\s+)?", "", (a.get("comite") or "").lower()).strip()
+        if not hit and corto:
+            raiz = re.sub(r"(os|as|o|a|es|e)$", "", corto.split()[0]) if len(corto.split()[0]) > 5 else corto.split()[0]
+            hit = bool(re.search(rf"(?<!\w){REF_COMITE}{re.escape(raiz)}\w{{0,4}}(?!\w)", t))
+        if hit:
+            out.append(a["id"])
+    return out
+
+
 @app.post("/api/preguntas/<int:qid>/agentes/<aid>")
 def responder(qid, aid):
-    ronda = _ronda()
-    panel, agente, q, msgs, fuentes, error = _preparar(qid, aid, ronda)
-    texto = error or ""
+    p = _preparar(qid, aid, _ronda(), *_modo())
+    texto, error = p["error"] or "", bool(p["error"])
     if not error:
         uso = {}
+        a = p["agente"]
         try:
-            texto = ia.llamar(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"],
-                              max_tokens=400 if ronda else 800, uso=uso)
-            consumo.registrar(panel["id"], aid, q["id"], "replica" if ronda else "respuesta", uso)
+            texto = ia.llamar(p["msgs"], modelo=a["modelo"], temperatura=a["temperatura"], max_tokens=p["tokens"],
+                              uso=uso, agente=a)
+            consumo.registrar(p["panel"]["id"], aid, qid, "replica" if p["ronda"] else "respuesta", uso)
         except Exception as e:  # noqa: BLE001 — se muestra al usuario en la burbuja
             error, texto = True, str(e)[:400]
-    return jsonify(_guardar(panel, q, aid, ronda, texto, bool(error), fuentes))
+    m = _guardar(p, texto, error)
+    m["alusiones"] = [] if error else alusiones(p["panel"], aid, texto)
+    return jsonify(m)
 
 
 def _linea(**d):
@@ -515,28 +586,63 @@ def flujo_ndjson(gen):
 @app.post("/api/preguntas/<int:qid>/agentes/<aid>/flujo")
 def responder_flujo(qid, aid):
     """Como `responder`, pero el texto llega mientras el experto lo escribe."""
-    ronda = _ronda()
-    panel, agente, q, msgs, fuentes, error = _preparar(qid, aid, ronda)
+    p = _preparar(qid, aid, _ronda(), *_modo())
+    a = p["agente"]
 
     def gen():
-        if error:
-            yield _linea(t="fin", m=_guardar(panel, q, aid, ronda, error, True, fuentes))
+        if p["error"]:
+            yield _linea(t="fin", m=_guardar(p, p["error"], True), alusiones=[])
             return
         partes, uso, fallo = [], {}, None
         try:
-            for x in ia.llamar_flujo(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"],
-                                     max_tokens=400 if ronda else 800, uso=uso):
+            for x in ia.llamar_flujo(p["msgs"], modelo=a["modelo"], temperatura=a["temperatura"],
+                                     max_tokens=p["tokens"], uso=uso, agente=a):
                 partes.append(x)
                 yield _linea(t="d", x=x)
-            consumo.registrar(panel["id"], aid, q["id"], "replica" if ronda else "respuesta", uso)
+            consumo.registrar(p["panel"]["id"], aid, qid, "replica" if p["ronda"] else "respuesta", uso)
         except Exception as e:  # noqa: BLE001
             fallo = str(e)[:400]
         texto = "".join(partes).strip()
         if fallo and texto:   # se cortó a mitad: se guarda lo dicho y se avisa
             texto += f"\n\n*(Intervención interrumpida: {fallo})*"
-        yield _linea(t="fin", m=_guardar(panel, q, aid, ronda, texto or fallo or "(sin respuesta)",
-                                         bool(fallo) and not partes, fuentes))
+        m = _guardar(p, texto or fallo or "(sin respuesta)", bool(fallo) and not partes)
+        yield _linea(t="fin", m=m, alusiones=alusiones(p["panel"], aid, texto) if texto else [])
     return flujo_ndjson(gen())
+
+
+@app.post("/api/preguntas/<int:qid>/solicitudes")
+def solicitudes(qid):
+    """Turno de solicitudes: cada delegado decide (en una línea) si pide la palabra y para qué."""
+    from concurrent.futures import ThreadPoolExecutor
+    excluir = set(request.args.getlist("excluir"))
+    with bd.db() as c:
+        q = c.execute("SELECT * FROM mensajes WHERE id=? AND rol='user'", (qid,)).fetchone()
+        if not q:
+            abort(404)
+        panel = _panel(c, q["panel_id"])
+        debate = sesiones.transcripcion(c, q["sesion_id"], panel, 9000) if q["sesion_id"] else ""
+    if not debate:
+        return jsonify(error="Aún no hay debate"), 400
+
+    def uno(a):
+        uso = {}
+        try:
+            t = ia.llamar([{"role": "system", "content": sistema_agente(panel, a)},
+                           {"role": "user", "content": f"Debate hasta ahora:\n{debate}\n\nLa presidencia abre el turno de "
+                            "solicitudes de palabra. Pide la palabra SOLO si tienes algo nuevo y relevante que aportar, "
+                            "rebatir o aclarar. Responde EXACTAMENTE con una línea: «SÍ: <motivo en menos de 10 palabras>» "
+                            "o «NO»."}], temperatura=0.3, max_tokens=40, uso=uso, agente=a)
+            consumo.registrar(panel["id"], a["id"], qid, "solicitud", uso)
+        except Exception:  # noqa: BLE001 — quien no responde, no pide la palabra
+            return None
+        import re
+        m = re.match(r"\W*S[ÍI]\b\W*(.*)", t.strip(), re.I)
+        return {"agente_id": a["id"], "motivo": m.group(1).strip()[:120]} if m else None
+
+    candidatos = [a for a in panel["agentes"] if a["id"] not in excluir]
+    with ThreadPoolExecutor(6) as ex:
+        piden = [x for x in ex.map(uno, candidatos) if x]
+    return jsonify(piden)
 
 
 # ---- consultor general (fuera del hemiciclo) ----------------------------------------
@@ -585,6 +691,44 @@ def consultor():
             fallo = str(e)[:400]
         yield _linea(t="fin", texto="".join(partes).strip(), error=fallo if not partes else None)
     return flujo_ndjson(gen())
+
+
+# ---- proveedores de IA ------------------------------------------------------------
+@app.get("/api/proveedores")
+def ver_proveedores():
+    return jsonify(proveedores=proveedores.listar(), plantillas=proveedores.PLANTILLAS,
+                   defecto={"url": config.IA_URL, "modelo": config.IA_MODELO})
+
+
+@app.post("/api/proveedores")
+@app.put("/api/proveedores/<prid>")
+def guardar_proveedor(prid=None):
+    solo_presidencia()
+    try:
+        return jsonify(proveedores.guardar(request.get_json(force=True), prid)), 200 if prid else 201
+    except (ValueError, LookupError) as e:
+        return jsonify(error=str(e)), 400
+
+
+@app.delete("/api/proveedores/<prid>")
+def borrar_proveedor(prid):
+    solo_presidencia()
+    with bd.db() as c:
+        usan = [f"{a['nombre']} ({p['nombre']})" for p in (panel_dict(c, r) for r in c.execute("SELECT * FROM paneles"))
+                for a in p["agentes"] if a.get("proveedor") == prid]
+    if usan:
+        return jsonify(error="Lo usan estos expertos; cámbielos antes: " + ", ".join(usan[:8])), 409
+    proveedores.borrar(prid)
+    return "", 204
+
+
+@app.post("/api/proveedores/<prid>/probar")
+def probar_proveedor(prid):
+    solo_presidencia()
+    try:
+        return jsonify(modelos=proveedores.probar(prid))
+    except Exception as e:  # noqa: BLE001
+        return jsonify(error=str(e)[:300]), 502
 
 
 # ---- ajustes: tope de gasto y copias de seguridad --------------------------------
@@ -757,6 +901,8 @@ def arrancar():
                 if not c.execute("SELECT 1 FROM paneles WHERE nombre=?", (p["nombre"],)).fetchone():
                     guardar_panel(c, None, p)
                 c.execute("INSERT INTO semillas VALUES(?)", (p["nombre"],))
+    with bd.db() as c:
+        asamblea.panel_id(c)
     if not os.environ.get("CONSEJO_SIN_COPIAS"):
         copias.arrancar()
 

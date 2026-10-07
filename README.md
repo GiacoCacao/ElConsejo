@@ -18,6 +18,26 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Asamblea General
+
+Consejo especial donde varios comités (los paneles) debaten un asunto. Al convocarla se eligen los comités
+y sus delegados (por defecto, un portavoz), el **tiempo de palabra** y la modalidad de la ronda de posiciones.
+Cada delegado conserva su configuración, su biblioteca y su proveedor de IA, y habla en nombre de su comité.
+
+**Derecho de palabra parlamentario**: tras la ronda de posiciones, la presidencia gestiona una **lista de
+oradores**: concede la palabra a quien quiera, abre el turno de **solicitudes** («¿quién pide la palabra?»:
+cada delegado decide si tiene algo nuevo que aportar) y concede **réplicas por alusiones**, que se detectan
+cuando un orador nombra a otro delegado o a su comité («el comité jurídico», «la delegación financiera»).
+La votación y el acta funcionan como en cualquier consejo; el acta indica a qué comité representa cada delegado.
+
+## Consultas individuales y proveedores de IA
+
+- **Consulta individual**: desde la ficha de un experto, la pregunta va solo a él; los demás no la oyen.
+- **Proveedores de IA por experto**: en Ajustes se registran otras APIs compatibles con OpenAI (OpenAI,
+  Anthropic, Gemini, Mistral, Groq, OpenRouter, xAI, Ollama…) con su clave, que se guarda cifrada con
+  `CONSEJO_SECRETO` y no vuelve al navegador. Cada experto elige proveedor y modelo en Configurar. Si una API
+  rechaza un parámetro (`stream_options`, `max_tokens`, `temperature`…), la llamada se adapta sola.
+
 ## Tiempo real y consultor general
 
 - **Respuestas en tiempo real**: el texto de cada experto aparece mientras lo escribe (flujo de la API; el

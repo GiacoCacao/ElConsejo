@@ -99,7 +99,8 @@ def resumen(panel):
     agentes = []
     for a in panel["agentes"]:
         suyas = [f for f in del_panel if f["agente_id"] == a["id"]]
-        modelo = a.get("modelo") or config.IA_MODELO
+        import proveedores
+        modelo = proveedores.destino(a)[2]
         t = tars.get(modelo)
         consultas = [f for f in suyas if f["tipo"] != "resumen"]
         ultima = consultas[-1] if consultas else None

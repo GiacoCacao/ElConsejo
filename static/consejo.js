@@ -27,6 +27,7 @@ const ICONOS = {
   descargar: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>',
   enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
   lupa: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5M8.5 10.5h4M10.5 8.5v4"/>',
+  persona: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
   deslizadores: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   salir: '<path d="M14 4.5h5.5v15H14M10 8l-4 4 4 4M6 12h10"/>',
   arriba: '<path d="M6 15l6-6 6 6"/>', abajo: '<path d="M6 9l6 6 6-6"/>',
@@ -111,7 +112,7 @@ function confirmar(texto, aceptar = 'Aceptar') {
 // ---- carga ----
 async function cargar(id) {
   paneles = await api('/api/paneles');
-  panel = paneles.find(p => p.id === id) || paneles[0] || null;
+  panel = paneles.find(p => p.id === id) || paneles.find(p => p.tipo !== 'asamblea') || paneles[0] || null;
   if (panel) localStorage.panel = panel.id;
   const est = panel ? await api(`/api/paneles/${panel.id}/sesion`) : { sesion: null, mensajes: [], votaciones: [] };
   sesion = est.sesion; msgs = est.mensajes; votaciones = est.votaciones;
@@ -121,7 +122,12 @@ async function cargar(id) {
   for (const m of msgs) if (m.rol === 'agent' && m.pregunta_id === qActual)
     estado[m.agente_id] = m.error ? 'error' : 'listo';
   if (qActual && panel) sel = (panel.agentes.find(a => estado[a.id]) || {}).id || null;
+  destinoInd = null; pintarDestino();
+  $('#editar').hidden = !!panel && panel.tipo === 'asamblea';
+  document.body.classList.toggle('en-asamblea', !!panel && panel.tipo === 'asamblea');
+  if (typeof oradores !== 'undefined') oradores.length = 0;
   pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro(); cargarConsumo(); pintarSesionBar();
+  if (typeof pintarOradores === 'function') pintarOradores();
 }
 async function refrescarAgentes() {   // recuentos de pools, sin tocar la conversación
   const ps = await api('/api/paneles'); const p = ps.find(x => panel && x.id === panel.id);
@@ -133,8 +139,11 @@ function pintarTabs() {
   const menu = $('#menuPaneles'); menu.innerHTML = '';
   for (const p of paneles) {
     const b = document.createElement('button');
-    b.type = 'button'; b.setAttribute('role', 'menuitem'); b.className = 'item' + (panel && p.id === panel.id ? ' act' : '');
-    b.innerHTML = `<div class="t">${esc(p.nombre)}</div><div class="d">${esc(p.descripcion || '')}</div>
+    b.type = 'button'; b.setAttribute('role', 'menuitem');
+    b.className = 'item' + (p.tipo === 'asamblea' ? ' asamblea' : '') + (panel && p.id === panel.id ? ' act' : '');
+    b.innerHTML = p.tipo === 'asamblea'
+      ? `<div class="t">${ico('mazo')} ${esc(p.nombre)}</div><div class="d">Debate entre comités con derecho de palabra parlamentario.${p.agentes.length ? ` Última composición: ${p.agentes.length} delegados.` : ''}</div>`
+      : `<div class="t">${esc(p.nombre)}</div><div class="d">${esc(p.descripcion || '')}</div>
       <div class="caras">${p.agentes.slice(0, 7).map(a => `<span style="--c:${a.color}">${esc(monograma(a))}</span>`).join('')}
       <em>${p.agentes.length} expertos</em></div>`;
     b.onclick = () => { abrirMenu(false); cargar(p.id); };
@@ -160,7 +169,7 @@ function geometria() {
     const t = n === 1 ? Math.PI / 2 : Math.PI * (0.9 - 0.8 * i / (n - 1));
     return { a, t, x: cx + Rx * Math.cos(t), y: cy - Ry * Math.sin(t) };
   });
-  const mesaW = Math.min(700, W * (movil ? .94 : .58)); let top = 16;
+  const mesaW = Math.min(700, W * (movil ? .94 : .58)); let top = movil ? 60 : 72;   // nunca bajo la barra de consumo
   for (const p of pos) if (Math.abs(p.x - cx) < mesaW / 2 + 70) top = Math.max(top, p.y + (movil ? 52 : 118));
   return { W, H, cx, cy, Rx, Ry, pos, movil, mesaTop: Math.min(top, H - 300) };
 }
@@ -180,7 +189,8 @@ function pintarArco() {
     const turno = sesion && sesion.modo_debate === 'orden' ? sesion.orden.indexOf(a.id) + 1 : 0;
     d.innerHTML = `<div class="medallon"><span class="anillo"></span><span class="ini">${esc(monograma(a))}</span><span class="punto"></span>${turno ? `<span class="turno" title="Turno ${turno} del debate">${turno}</span>` : ''}</div>
       <div class="n">${esc(a.nombre)}</div><div class="r" title="${esc(a.rol)}">${esc(a.rol)}</div>`
-      + (a.capitulos ? `<div class="pool" title="${a.docs} documentos · ${a.capitulos} capítulos">${a.docs} doc · ${a.capitulos} cap.</div>` : '');
+      + (a.comite ? `<div class="pool delegacion" title="Delegado del ${esc(a.comite)}">${esc(a.comite.replace(/^(Panel|Consejo)\s+(de\s+|del\s+)?/i, ''))}</div>` :
+         a.capitulos ? `<div class="pool" title="${a.docs} documentos · ${a.capitulos} capítulos">${a.docs} doc · ${a.capitulos} cap.</div>` : '');
     d.onclick = () => elegir(a.id);
     d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(a.id); } };
     arco.append(d);
@@ -215,9 +225,9 @@ function pintarHemiciclo(g) {
 function pintarDescripcion() {
   const d = $('#descripcion');
   if (progreso) {
-    const tit = progreso.ronda ? `Réplica ${ROMANO(progreso.ronda)}` : 'Deliberando';
+    const tit = progreso.titulo || (progreso.ronda ? `Réplica ${ROMANO(progreso.ronda)}` : 'Deliberando');
     d.className = 'descripcion vivo';
-    d.innerHTML = `${tit} · ${progreso.turno ? `en uso de la palabra: ${esc(progreso.turno)} · ` : ''}${progreso.hechos} de ${progreso.de}<span class="barraP"><i style="width:${100 * progreso.hechos / Math.max(1, progreso.de)}%"></i></span>`;
+    d.innerHTML = `${tit} · ${progreso.turno ? `en uso de la palabra: ${esc(progreso.turno)}${progreso.de > 1 ? ' · ' : ''}` : ''}${progreso.de > 1 ? `${progreso.hechos} de ${progreso.de}` : ''}<span class="barraP"><i style="width:${100 * progreso.hechos / Math.max(1, progreso.de)}%"></i></span>`;
   } else { d.className = 'descripcion'; d.textContent = panel ? panel.descripcion || '' : ''; }
 }
 
@@ -256,16 +266,21 @@ function pintarMesa() {
   let h = `<header class="firma" style="--c2:color-mix(in srgb,${a.color} 45%,#c9a96e)">
       <div class="mini">${esc(monograma(a))}</div>
       <div><div class="quien">${esc(a.nombre)}</div><div class="rol">${esc(a.rol || 'Experto')}</div>${gastoAgente(a.id)}</div>
-      <div class="nav"><button class="icono" data-mv="-1" aria-label="Experto anterior">${ico('izq')}</button><button class="icono" data-mv="1" aria-label="Experto siguiente">${ico('der')}</button></div>
+      <div class="nav">${!document.body.classList.contains('observador') ? `${panel.tipo === 'asamblea' && sesion && qActual
+          ? `<button class="contorno peq palabra" data-palabra title="Conceder la palabra a ${esc(a.nombre)}">${ico('mazo')}<span>Conceder la palabra</span></button>` : ''}
+        <button class="icono" data-ind title="Consulta individual a ${esc(a.nombre)}">${ico('persona')}</button>` : ''}
+        <button class="icono" data-mv="-1" aria-label="Experto anterior">${ico('izq')}</button><button class="icono" data-mv="1" aria-label="Experto siguiente">${ico('der')}</button></div>
     </header><div class="cuerpo">`;
   for (const m of suyos) {
-    if (m.ronda > 0) h += `<div class="replica">Réplica ${ROMANO(m.ronda)}</div>`;
+    if (m.modo) h += `<div class="replica">${m.modo === 'alusion' ? 'Por alusiones' : 'En uso de la palabra'}</div>`;
+    else if (m.ronda > 0) h += `<div class="replica">Réplica ${ROMANO(m.ronda)}</div>`;
     h += md(m.texto);
     if (m.fuentes.length) h += `<div class="fuentes"><div class="rot">Fuentes consultadas</div>` + m.fuentes.map(f =>
       `<div class="f"><span>${esc(f.doc)}</span><span>Cap. ${f.capitulo} · ${esc(f.titulo)}</span></div>`).join('') + '</div>';
   }
   if (estado[a.id] === 'hablando' && vivo[a.id]) {
-    if (suyos.length) h += `<div class="replica">Réplica ${ROMANO((suyos[suyos.length - 1].ronda || 0) + 1)}</div>`;
+    if (vivoModo[a.id]) h += `<div class="replica">${vivoModo[a.id] === 'alusion' ? 'Por alusiones' : 'En uso de la palabra'}</div>`;
+    else if (suyos.length) h += `<div class="replica">Réplica ${ROMANO((suyos[suyos.length - 1].ronda || 0) + 1)}</div>`;
     h += `<div class="en-vivo">${md(vivo[a.id])}</div>`;
   }
   else if (estado[a.id] === 'pensando' || estado[a.id] === 'hablando') h += `<div class="pensando-txt">${suyos.length ? 'Preparando su réplica' : 'Estudiando la consulta'}<span class="puntos"><i></i><i></i><i></i></span></div>`;
@@ -274,6 +289,8 @@ function pintarMesa() {
   r.innerHTML = h + '</div>';
   if (estado[a.id] === 'hablando' && abajo) r.scrollTop = r.scrollHeight;
   r.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => mover(+b.dataset.mv));
+  const bi = r.querySelector('[data-ind]'); if (bi) bi.onclick = () => consultaIndividual(a.id);
+  const bp = r.querySelector('[data-palabra]'); if (bp) bp.onclick = () => concederPalabra(a.id, 'palabra');
   if (suyos.some(m => m.error)) r.classList.add('error');
 }
 
@@ -287,7 +304,9 @@ function pintarRegistro() {
     const d = document.createElement('div');
     d.className = 'acta ' + m.rol; if (a) d.style.setProperty('--c', `color-mix(in srgb,${a.color} 40%,#e6d3a8)`);
     const hora = new Date(m.ts * 1000).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
-    d.innerHTML = `<div class="q"><b>${m.rol === 'user' ? 'Consulta' : esc(a ? a.nombre : 'Experto')}</b><span>${m.ronda ? 'réplica ' + ROMANO(m.ronda) + ' · ' : ''}${hora}</span></div>`
+    const dest = m.destinatario && panel.agentes.find(x => x.id === m.destinatario);
+    const etq = m.modo ? (m.modo === 'alusion' ? 'por alusiones · ' : 'en uso de la palabra · ') : m.ronda ? 'réplica ' + ROMANO(m.ronda) + ' · ' : '';
+    d.innerHTML = `<div class="q"><b>${m.rol === 'user' ? (dest ? 'Consulta individual a ' + esc(dest.nombre) : 'Consulta') : esc(a ? a.nombre : 'Experto')}</b><span>${a && a.comite ? esc(a.comite) + ' · ' : ''}${etq}${hora}</span></div>`
       + (m.rol === 'user' ? `<p>${esc(m.texto)}</p>` : `<div class="cuerpo">${md(m.texto)}</div>`)
       + (m.adjuntos.length ? `<div class="adjuntos-msg">${m.adjuntos.map(x => `<span class="ficha">${ico('doc')}${esc(x.nombre)}</span>`).join('')}</div>` : '')
       + m.imagenes.map(i => `<img src="/img/${i}" alt="">`).join('');
@@ -336,47 +355,74 @@ sincDialogo();
 function ocupado(si, texto) {
   $('#enviar').disabled = si; $('#enviar .etq').textContent = texto || 'Consultar';
 }
+// una intervención en tiempo real; devuelve el mensaje guardado (o uno de error)
+let vivoModo = {};
+async function intervenir(qid, id, { ronda = 0, modo = null, por = null, vigente = () => true } = {}) {
+  vivo[id] = ''; vivoModo[id] = modo;
+  let m, alus = [];
+  try {
+    const fin = await flujo(`/api/preguntas/${qid}/agentes/${id}/flujo?ronda=${ronda}${modo ? `&modo=${modo}` : ''}${por ? `&por=${por}` : ''}`, x => {
+      if (!vigente()) return;
+      const primero = !vivo[id];
+      vivo[id] += x;
+      if (primero) { estado[id] = 'hablando'; if (!sel) sel = id; pintarArco(); }
+      if (sel === id) repintarMesa();
+    });
+    m = fin.m; alus = fin.alusiones || [];
+  } catch (err) { m = { rol: 'agent', agente_id: id, pregunta_id: qid, ronda, modo, texto: err.message, error: true, imagenes: [], adjuntos: [], fuentes: [], ts: Date.now() / 1000 }; }
+  delete vivo[id]; delete vivoModo[id];
+  if (!vigente()) return null;
+  msgs.push(m); estado[id] = m.error ? 'error' : 'listo';
+  if (!sel) sel = id;
+  pintarArco(); pintarMesa(); pintarRegistro(); pedirConsumo();
+  if (alus.length && typeof anotarAlusiones === 'function') anotarAlusiones(id, alus);
+  return m;
+}
+
+// consulta individual: la pregunta va solo a un experto y los demás no la oyen
+let destinoInd = null;
+function pintarDestino() {
+  const a = destinoInd && panel && panel.agentes.find(x => x.id === destinoInd);
+  if (!a) destinoInd = null;
+  const d = $('#destino');
+  d.hidden = !a;
+  d.innerHTML = a ? `${ico('persona')}<span>Consulta individual a <b>${esc(a.nombre)}</b> · solo este experto la oirá</span>
+    <button type="button" aria-label="Volver al pleno">${ico('x')}</button>` : '';
+  if (a) d.querySelector('button').onclick = () => { destinoInd = null; pintarDestino(); };
+  $('#texto').placeholder = a ? `Consulta individual a ${a.nombre}…` : (innerWidth < 760 ? 'Su consulta…' : 'Plantee su consulta al Consejo…');
+}
+function consultaIndividual(id) { destinoInd = id; pintarDestino(); $('#texto').focus(); }
+
 $('#chat').onsubmit = async e => {
   e.preventDefault();
   if (!panel || $('#enviar').disabled) return;
   if (!panel.agentes.length) return avisar('Este panel no tiene expertos todavía.', true);
   const fd = new FormData(); fd.append('texto', $('#texto').value);
   adjuntos.forEach(f => fd.append('imagenes', f));
-  const nR = $('#dialogo').checked ? rondas : 0;
+  const individual = destinoInd;
+  if (individual) fd.append('destinatario', individual);
+  const nR = $('#dialogo').checked && !individual ? rondas : 0;
   ocupado(true, adjuntos.some(ES_DOC) ? 'Procesando' : 'Enviando');
   try {
     const q = await api(`/api/paneles/${panel.id}/preguntas`, { method: 'POST', body: fd });
-    $('#texto').value = ''; autoAlto(); adjuntos = []; pintarAdjuntos(); ocupado(true, 'Deliberando');
-    msgs.push(q); qActual = q.pregunta_id; estado = {}; sel = null;
+    $('#texto').value = ''; autoAlto(); adjuntos = []; pintarAdjuntos(); ocupado(true, individual ? 'Consultando' : 'Deliberando');
+    msgs.push(q); qActual = q.pregunta_id; estado = {}; sel = individual;
+    if (typeof oradores !== 'undefined') oradores.length = 0;
     const pid = panel.id, vigente = () => panel && panel.id === pid && qActual === q.pregunta_id;
     if (!sesion || sesion.id !== q.sesion_id) await refrescarSesion();   // consultar abre sesión si no la había
-    const enOrden = !!sesion && sesion.modo_debate === 'orden';
+    const enOrden = !individual && !!sesion && sesion.modo_debate === 'orden';
     const nombreDe = id => (panel.agentes.find(a => a.id === id) || {}).nombre;
-    let activos = enOrden ? sesion.orden.filter(id => panel.agentes.some(a => a.id === id)) : panel.agentes.map(a => a.id);
+    let activos = individual ? [individual]
+      : enOrden ? sesion.orden.filter(id => panel.agentes.some(a => a.id === id)) : panel.agentes.map(a => a.id);
     for (let r = 0; r <= nR && activos.length; r++) {
       progreso = { ronda: r, hechos: 0, de: activos.length, turno: null };
       if (r) estado = {};
       activos.forEach(id => estado[id] = enOrden ? 'espera' : 'pensando');
       pintarArco(); pintarMesa(); pintarRegistro();
       const uno = async id => {
-        if (enOrden) { estado[id] = 'pensando'; progreso.turno = nombreDe(id); sel = id; pintarArco(); pintarMesa(); }
-        let m;
-        vivo[id] = '';
-        try {
-          m = (await flujo(`/api/preguntas/${q.pregunta_id}/agentes/${id}/flujo?ronda=${r}`, x => {
-            if (!vigente()) return;
-            const primero = !vivo[id];
-            vivo[id] += x;
-            if (primero) { estado[id] = 'hablando'; if (!sel) sel = id; pintarArco(); }
-            if (sel === id) repintarMesa();
-          })).m;
-        }
-        catch (err) { m = { rol: 'agent', agente_id: id, pregunta_id: q.pregunta_id, ronda: r, texto: err.message, error: true, imagenes: [], adjuntos: [], fuentes: [], ts: Date.now() / 1000 }; }
-        delete vivo[id];
-        if (!vigente()) return null;
-        msgs.push(m); estado[id] = m.error ? 'error' : 'listo'; progreso.hechos++;
-        if (!sel) sel = id;
-        pintarArco(); pintarMesa(); pintarRegistro(); pedirConsumo();
+        if (enOrden || individual) { estado[id] = 'pensando'; progreso.turno = nombreDe(id); sel = id; pintarArco(); pintarMesa(); }
+        const m = await intervenir(q.pregunta_id, id, { ronda: r, vigente });
+        if (m) progreso.hechos++;
         return m;
       };
       let hechos = [];
@@ -394,6 +440,7 @@ $('#chat').onsubmit = async e => {
     }
   } catch (err) { avisar(err.message, true); }
   progreso = null; pintarDescripcion(); ocupado(false); pintarSesionBar();
+  if (typeof pintarOradores === 'function') pintarOradores();
 };
 
 // ---- actas ----
@@ -578,8 +625,19 @@ $('#pools').onclose = () => clearTimeout(poolTimer);
 // ---- editor de panel ----
 const COLORES = ['#c9a96e', '#7f9cc9', '#8fb59a', '#c27c8e', '#a593c9', '#d1a173', '#7fb5b5', '#b5a77f'];
 let editando = null;
+// proveedores de IA para el editor (se cargan al abrirlo)
+let provs = [], provDefecto = {};
+async function cargarProveedores() {
+  const r = await api('/api/proveedores').catch(() => null);
+  if (r) { provs = r.proveedores; provDefecto = r.defecto; }
+}
+function opcionesProveedor(sel) {
+  return `<option value="">IA por defecto${provDefecto.modelo ? ` (${esc(provDefecto.modelo)})` : ''}</option>`
+    + provs.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.nombre)}${p.modelo ? ` · ${esc(p.modelo)}` : ''}</option>`).join('');
+}
 function filaAgente(a = {}) {
   const d = document.createElement('div'); d.className = 'ag'; d.dataset.id = a.id || '';
+  if (a.comite) { d.dataset.comite = a.comite; d.dataset.comiteId = a.comite_id || ''; }
   d.dataset.cap = a.capitulos || 0; d.dataset.nom = a.nombre || '';
   const c = a.color || COLORES[$('#listaAgentes').children.length % COLORES.length];
   const mono = /^[\p{L}]{1,3}$/u.test((a.emoji || '').trim()) ? a.emoji.trim() : '';
@@ -589,21 +647,26 @@ function filaAgente(a = {}) {
     <label class="fld">Especialidad<input class="rol" value="${esc(a.rol || '')}" placeholder="Rol en el consejo"></label>
     <label class="fld">Acento<input class="color" type="color" value="${c}"></label>
     <button type="button" class="icono" title="Retirar experto">${ico('x')}</button>
-    <label class="fld mono">Monograma<input class="emoji" maxlength="3" value="${esc(mono)}" placeholder="Auto"></label>
-    <label class="fld modelo-l">Modelo propio <small>— opcional; para imágenes, uno con visión</small><input class="modelo" value="${esc(a.modelo || '')}" placeholder="Por defecto el del servidor"></label>
+    <div class="fila2">
+      <label class="fld">Monograma<input class="emoji" maxlength="3" value="${esc(mono)}" placeholder="Auto"></label>
+      <label class="fld">Proveedor de IA<select class="proveedor">${opcionesProveedor(a.proveedor)}</select></label>
+      <label class="fld">Modelo <small>— vacío: el del proveedor; para imágenes, uno con visión</small><input class="modelo" list="lista-modelos-${a.proveedor || 'def'}" value="${esc(a.modelo || '')}" placeholder="Modelo del proveedor"></label>
+    </div>
     <label class="fld ancho">Instrucciones <small>— personalidad, especialidad y forma de responder</small><textarea class="instr" rows="2">${esc(a.instrucciones || '')}</textarea></label>`;
   const vista = () => {
     const v = d.querySelector('.vista'); v.style.setProperty('--c', d.querySelector('.color').value);
     v.textContent = monograma({ nombre: d.querySelector('.nombre').value || '?', emoji: d.querySelector('.emoji').value });
   };
   d.querySelectorAll('.nombre,.emoji,.color').forEach(i => i.addEventListener('input', vista)); vista();
+  d.querySelector('.proveedor').onchange = e => d.querySelector('.modelo').setAttribute('list', `lista-modelos-${e.target.value || 'def'}`);
   d.querySelector('button').onclick = async () => {
     if (+d.dataset.cap && !await confirmar(`${d.dataset.nom} tiene ${d.dataset.cap} capítulos en su biblioteca; se eliminarán al guardar. ¿Retirarlo?`, 'Retirar')) return;
     d.remove();
   };
   $('#listaAgentes').append(d);
 }
-function abrirEditor(p) {
+async function abrirEditor(p) {
+  await cargarProveedores();
   editando = p; const f = $('#formEditor');
   $('#sobreEditor').textContent = p ? 'Configuración' : 'Nuevo';
   $('#tituloEditor').textContent = p ? p.nombre : 'Constituir un panel';
@@ -627,7 +690,8 @@ $('#formEditor').onsubmit = async e => {
   const agentes = [...$('#listaAgentes').children].map(d => ({
     id: d.dataset.id || undefined, emoji: d.querySelector('.emoji').value, nombre: d.querySelector('.nombre').value,
     rol: d.querySelector('.rol').value, color: d.querySelector('.color').value,
-    instrucciones: d.querySelector('.instr').value, modelo: d.querySelector('.modelo').value }));
+    instrucciones: d.querySelector('.instr').value, modelo: d.querySelector('.modelo').value,
+    proveedor: d.querySelector('.proveedor').value, ...(d.dataset.comite ? { comite: d.dataset.comite, comite_id: d.dataset.comiteId } : {}) }));
   const cuerpo = JSON.stringify({ nombre: f.nombre.value, descripcion: f.descripcion.value, contexto: f.contexto.value, agentes });
   const h = { 'Content-Type': 'application/json' };
   try {

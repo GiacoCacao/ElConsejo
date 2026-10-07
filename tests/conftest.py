@@ -16,6 +16,7 @@ import ia  # noqa: E402
 
 LLAMAR_REAL = ia.llamar   # la de verdad, antes de que las pruebas la sustituyan
 
+SOLICITAN = set()   # nombres que piden la palabra en el turno de solicitudes
 VOTOS = {}   # nombre del experto -> lo que «vota» la IA simulada (por defecto, A FAVOR)
 
 MANUAL = "# Manual de huertos urbanos\n\n" + "".join(
@@ -36,7 +37,7 @@ def falsos(monkeypatch):
     monkeypatch.setattr(fabrica, "buscar", lambda q, ids, limite=6: [])
     monkeypatch.setattr(fabrica, "borrar", lambda fid: None)
 
-    def llamar(msgs, modelo=None, temperatura=None, max_tokens=800, uso=None):
+    def llamar(msgs, modelo=None, temperatura=None, max_tokens=800, uso=None, agente=None):
         llamadas.append(msgs)
         if uso is not None:
             uso.update(modelo=modelo or "deepseek-flash", entrada=1000, salida=200, cache=400, estimado=False)
@@ -50,6 +51,9 @@ def falsos(monkeypatch):
             if "SÍNTESIS" in ult:
                 return "SÍNTESIS:\nLos expertos debatieron con matices.\nCONCLUSIONES:\nConviene actuar por fases."
             return "El Consejo acuerda: abrir la sucursal por fases."
+        if "solicitudes de palabra" in ult:
+            nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
+            return "SÍ: rebatir el dato de costes" if nombre in SOLICITAN else "NO"
         if "somete a votación" in ult:
             nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
             return f"VOTO: {VOTOS.get(nombre, 'A FAVOR')}\nMOTIVO: Es lo prudente."
@@ -58,7 +62,7 @@ def falsos(monkeypatch):
         return "Respuesta de " + sis.split("Te llamas ")[1].split(" ")[0]
     monkeypatch.setattr(ia, "llamar", llamar)
 
-    def llamar_flujo(msgs, modelo=None, temperatura=None, max_tokens=800, uso=None):
+    def llamar_flujo(msgs, modelo=None, temperatura=None, max_tokens=800, uso=None, agente=None):
         texto = llamar(msgs, modelo, temperatura, max_tokens, uso)
         for i in range(0, len(texto), 7):   # en trozos, como la API real
             yield texto[i:i + 7]

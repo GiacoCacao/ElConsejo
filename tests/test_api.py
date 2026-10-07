@@ -2,7 +2,7 @@ import io
 
 
 def _panel(c):
-    return c.get("/api/paneles").get_json()[0]
+    return next(p for p in c.get("/api/paneles").get_json() if p["nombre"] == "Consejo de ejemplo")
 
 
 def _preguntar(c, pid, texto, archivos=()):
@@ -52,7 +52,7 @@ def test_pool_por_agente_via_api(cliente, falsos):
             break
         time.sleep(0.1)
     assert d["estado"] == "listo" and d["capitulos"] == 3
-    assert [a["capitulos"] for a in cliente.get("/api/paneles").get_json()[0]["agentes"]] == [0, 3, 0, 0]
+    assert [a["capitulos"] for a in _panel(cliente)["agentes"]] == [0, 3, 0, 0]
     # la pregunta llega a ese agente con su biblioteca; a los demás, no
     llamadas, _ = falsos
     q = _preguntar(cliente, p["id"], "¿Qué plagas hay y cómo las controlo?").get_json()["pregunta_id"]

@@ -49,7 +49,9 @@ def _orden(sesion_orden, panel):
 
 def sesion_dict(c, r, panel=None):
     panel = panel or _app()._panel(c, r["panel_id"])
+    comp = json.loads(r["composicion"] or "null")
     return {"id": r["id"], "panel_id": r["panel_id"], "panel": panel["nombre"], "numero": r["numero"],
+            "composicion": comp, "limite_palabras": r["limite_palabras"],
             "asunto": r["asunto"], "estado": r["estado"], "modo_debate": r["modo_debate"],
             "orden": _orden(json.loads(r["orden"] or "[]"), panel), "anexos": _anexos_info(c, r),
             "abierta": r["abierta"], "cerrada": r["cerrada"], "acuerdo": r["acuerdo"],
@@ -113,14 +115,19 @@ def texto_anexos(c, sesion_row, tope=3500):
 
 def transcripcion(c, sid, panel, tope=24000):
     """Consultas e intervenciones de la sesión, en orden, como texto."""
-    nombres = {a["id"]: f"{a['nombre']} ({a['rol'] or 'experto'})" for a in panel["agentes"]}
+    nombres = {a["id"]: f"{a['nombre']} ({a['rol'] or 'experto'}{', ' + a['comite'] if a.get('comite') else ''})"
+               for a in panel["agentes"]}
+    solo = {a["id"]: a["nombre"] for a in panel["agentes"]}
     lineas = []
     for m in c.execute("SELECT * FROM mensajes WHERE sesion_id=? AND error=0 ORDER BY id", (sid,)):
         if m["rol"] == "user":
-            lineas.append(f"\n**Consulta de la presidencia:** {m['texto'] or '(documentos o imágenes adjuntos)'}")
+            a_quien = f" (consulta individual a {solo.get(m['destinatario'], 'un experto')})" if m["destinatario"] else ""
+            lineas.append(f"\n**Consulta de la presidencia{a_quien}:** {m['texto'] or '(documentos o imágenes adjuntos)'}")
         else:
             quien = nombres.get(m["agente_id"], "Experto retirado")
-            lineas.append(f"**{quien}**{' — réplica ' + str(m['ronda']) if m['ronda'] else ''}: {m['texto']}")
+            tipo = {"palabra": " — en uso de la palabra", "alusion": " — por alusiones"}.get(m["modo"]) or (
+                f" — réplica {m['ronda']}" if m["ronda"] else "")
+            lineas.append(f"**{quien}**{tipo}: {m['texto']}")
     t = "\n".join(lineas).strip()
     return t if len(t) <= tope else "[…]\n" + t[-tope:]
 
@@ -382,7 +389,8 @@ def votar(vid, aid):
                f"EXACTAMENTE con este formato y nada más:\n{formato}\nMOTIVO: <una o dos frases>"}]
     uso, opcion, motivo, error = {}, None, "", 0
     try:
-        texto = ia.llamar(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"], max_tokens=220, uso=uso)
+        texto = ia.llamar(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"], max_tokens=220, uso=uso,
+                          agente=agente)
         consumo.registrar(panel["id"], aid, None, "voto", uso)
         opcion, motivo = _leer_voto(texto, alts)
         if not opcion:
@@ -517,7 +525,13 @@ def componer_acta(c, s, panel, cierre_ts):
          f"**{panel['nombre']}** · {_fecha(s['abierta'])} · de {_hora(s['abierta'])} a {_hora(cierre_ts)} (hora de Caracas)",
          "", "## Asunto", s["asunto"], "", "## Asistentes",
          "- **La presidencia** (consultante), que convoca y dirige la sesión."]
-    L += [f"- **{nombres[i]['nombre']}**, {nombres[i]['rol'] or 'experto'}." for i in orden]
+    L += [f"- **{nombres[i]['nombre']}**, {nombres[i]['rol'] or 'experto'}"
+          + (f" — delegado del {nombres[i]['comite']}." if nombres[i].get("comite") else ".") for i in orden]
+    comp = json.loads(s["composicion"] or "null")
+    if comp:
+        L += ["", "Comités representados: " + ", ".join(x["nombre"] for x in comp["comites"]) + "."]
+    if s["limite_palabras"]:
+        L += [f"Tiempo de palabra: {s['limite_palabras']} palabras por intervención."]
     L += ["", "## Orden del debate",
           "Intervenciones " + ("por turnos, en este orden:" if s["modo_debate"] == "orden" else "simultáneas; orden de referencia:")]
     L += [f"{n}. {nombres[i]['nombre']}" for n, i in enumerate(orden, 1)]

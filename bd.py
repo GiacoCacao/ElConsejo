@@ -35,6 +35,8 @@ CREATE TABLE IF NOT EXISTS votos(
   id INTEGER PRIMARY KEY AUTOINCREMENT, votacion_id INTEGER, agente_id TEXT, opcion TEXT, motivo TEXT,
   error INTEGER DEFAULT 0, ts REAL);
 CREATE TABLE IF NOT EXISTS ajustes(clave TEXT PRIMARY KEY, valor TEXT);
+CREATE TABLE IF NOT EXISTS proveedores(
+  id TEXT PRIMARY KEY, nombre TEXT, url TEXT, modelo TEXT, clave TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS semillas(nombre TEXT PRIMARY KEY);   -- paneles de serie ya sembrados
 CREATE INDEX IF NOT EXISTS i_cap_doc ON capitulos(doc_id);
 CREATE INDEX IF NOT EXISTS i_cap_ag ON capitulos(agente_id);
@@ -47,7 +49,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS capfts USING fts5(
 MIGRACIONES = [("mensajes", "ronda", "INTEGER DEFAULT 0"),
                ("mensajes", "adjuntos", "TEXT"),
                ("mensajes", "fuentes", "TEXT"),
-               ("mensajes", "sesion_id", "INTEGER")]
+               ("mensajes", "sesion_id", "INTEGER"),
+               ("mensajes", "destinatario", "TEXT"),     # consulta individual a un experto
+               ("mensajes", "modo", "TEXT"),             # asamblea: «palabra» o «alusion»
+               ("paneles", "tipo", "TEXT"),              # «asamblea» para la Asamblea General
+               ("sesiones", "composicion", "TEXT"),      # asamblea: delegados y comités de esa sesión
+               ("sesiones", "limite_palabras", "INTEGER")]
 
 
 @contextmanager

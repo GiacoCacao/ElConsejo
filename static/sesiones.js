@@ -11,30 +11,37 @@ async function refrescarSesion() {
   if (!est) return;
   sesion = est.sesion; votaciones = est.votaciones;
   pintarSesionBar(); pintarArco(); pintarRegistro();
+  if (typeof pintarOradores === 'function') pintarOradores();
 }
 
 // ---- barra de sesión (sobre el atril) ----
 function pintarSesionBar() {
   const b = $('#sesionBar');
   if (!panel) { b.innerHTML = ''; return; }
+  const asam = panel.tipo === 'asamblea';
   if (!sesion) {
     b.className = 'sesionbar vacia';
-    b.innerHTML = `<span class="s-vacia">Sin sesión abierta · al consultar se abrirá una</span><span class="grow"></span>
-      <button type="button" class="contorno peq" id="sbIniciar">${ico('mazo')}<span>Iniciar sesión</span></button>`;
-    $('#sbIniciar').onclick = () => abrirDlgSesion(null);
+    b.innerHTML = asam
+      ? `<span class="s-vacia">La Asamblea no está reunida · convoque a los comités</span><span class="grow"></span>
+         <button type="button" class="contorno peq" id="sbIniciar">${ico('mazo')}<span>Convocar asamblea</span></button>`
+      : `<span class="s-vacia">Sin sesión abierta · al consultar se abrirá una</span><span class="grow"></span>
+         <button type="button" class="contorno peq" id="sbIniciar">${ico('mazo')}<span>Iniciar sesión</span></button>`;
+    $('#sbIniciar').onclick = () => asam ? abrirConvocatoria() : abrirDlgSesion(null);
     return;
   }
+  const comp = sesion.composicion;
   const n = sesion.anexos.length;
   b.className = 'sesionbar';
   b.innerHTML = `<span class="s-num">Sesión nº ${sesion.numero}</span>
     <span class="s-asunto" title="${esc(sesion.asunto)}">${esc(sesion.asunto)}</span>
     ${sesion.estado === 'votacion' ? '<em class="s-chip vivo">En votación</em>' : ''}
     ${sesion.acuerdo ? '<em class="s-chip ok" title="Hay un acuerdo aprobado en esta sesión">Acuerdo adoptado</em>' : ''}
+    ${comp ? `<em class="s-chip" title="${esc(comp.comites.map(c => c.nombre).join('\n'))}${sesion.limite_palabras ? '\nTiempo de palabra: ' + sesion.limite_palabras + ' palabras' : ''}">${comp.comites.length} comités · ${comp.delegados.length} delegados${sesion.limite_palabras ? ` · ${sesion.limite_palabras} pal.` : ''}</em>` : ''}
     ${n ? `<em class="s-chip" title="${esc(sesion.anexos.map(a => `Acta nº ${a.numero} · ${a.panel}`).join('\n'))}">${n} acta${n > 1 ? 's' : ''} anexa${n > 1 ? 's' : ''}</em>` : ''}
     <span class="grow"></span>
     <button type="button" class="enlace peq" id="sbOrden" title="Asunto, orden del debate y actas anexas">${ico('indice')}<span>Orden</span></button>
-    <button type="button" class="enlace peq" id="sbDeliberar" title="Llegar a un acuerdo por consenso o por mayoría simple">${ico('balanza')}<span>Deliberar acuerdo</span></button>
-    <button type="button" class="contorno peq" id="sbCerrar" title="Levantar el acta y concluir el asunto">${ico('sello')}<span>Acta de cierre</span></button>`;
+    <button type="button" class="enlace peq" id="sbDeliberar" title="Llegar a un acuerdo por consenso o por mayoría simple">${ico('balanza')}<span>${comp ? 'Acuerdo' : 'Deliberar acuerdo'}</span></button>
+    <button type="button" class="contorno peq" id="sbCerrar" title="Levantar el acta y concluir el asunto">${ico('sello')}<span>${comp ? 'Acta' : 'Acta de cierre'}</span></button>`;
   $('#sbOrden').onclick = () => abrirDlgSesion(sesion);
   $('#sbDeliberar').onclick = abrirVotacion;
   $('#sbCerrar').onclick = cerrarSesion;

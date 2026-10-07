@@ -57,10 +57,12 @@
   <section id="mesa" aria-live="polite">
     <div id="descripcion" class="descripcion"></div>
     <div id="sesionBar" class="sesionbar"></div>
+    <div id="oradores" class="oradores" hidden></div>
     <article id="respuesta"></article>
   </section>
 
   <form id="chat" autocomplete="off">
+    <div id="destino" class="destino" hidden></div>
     <div id="adjuntos"></div>
     <div class="campo">
       <label class="adjuntar" title="Adjuntar imágenes o documentos (PDF, DOCX, TXT…)">
@@ -226,6 +228,31 @@
 </dialog>
 <button type="button" id="consSel" class="cons-sel" hidden></button>
 
+<dialog id="dlgAsamblea" class="modal ancho">
+  <form id="formAsamblea">
+    <div class="cab">
+      <div><div class="sobre">Convocatoria</div><h2>Convocar la Asamblea General</h2></div>
+      <span class="grow"></span>
+      <button type="button" class="icono" data-i="x" data-cierra="dlgAsamblea" aria-label="Cerrar"></button>
+    </div>
+    <label class="fld">Asunto <small>— lo que la Asamblea debe debatir</small><input name="asunto" required maxlength="200" placeholder="¿Conviene dolarizar los contratos de la empresa?"></label>
+    <div class="rejilla3">
+      <div class="fld">Tiempo de palabra
+        <div class="segmentos grande" id="asaLimite"><button type="button" data-l="80">80 palabras</button><button type="button" data-l="120">120</button><button type="button" data-l="200">200</button><button type="button" data-l="">Sin límite</button></div></div>
+      <div class="fld">Ronda de posiciones
+        <div class="segmentos grande" id="asaModo"><button type="button" data-m="orden">Por turnos</button><button type="button" data-m="simultaneo">Simultánea</button></div></div>
+      <div class="fld">Delegados <b id="asaCuenta" class="cuenta">0 de 16</b></div>
+    </div>
+    <div class="seccion"><h3>Comités convocados</h3><small class="ayuda" style="margin-left:12px">Marque los comités y elija sus delegados; por defecto, un portavoz</small></div>
+    <div id="asaComites" class="comites"></div>
+    <div class="seccion"><h3>Actas anexas</h3></div>
+    <div id="asaAnexos" class="anexos"></div>
+    <div class="botones"><span class="grow"></span>
+      <button type="button" class="enlace" data-cierra="dlgAsamblea">Cancelar</button>
+      <button type="submit" class="dorado"><span class="etq">Convocar la Asamblea</span></button></div>
+  </form>
+</dialog>
+
 <dialog id="confirmar" class="modal estrecho">
   <div class="sobre">Confirmación</div>
   <p id="confirmarTexto"></p>
@@ -240,5 +267,6 @@
 <script src="/static/sesiones.js"></script>
 <script src="/static/ajustes.js"></script>
 <script src="/static/consultor.js"></script>
+<script src="/static/asamblea.js"></script>
 </body>
 </html>
