@@ -1,0 +1,18 @@
+# Ejemplo de despliegue. Copia a una carpeta aparte junto a un .env (ver .env.ejemplo)
+# y cambia TU_IP por la IP por la que quieras publicarlo (p. ej. la de Tailscale).
+name: elconsejo
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: elconsejo-web:latest
+    restart: unless-stopped
+    ports:
+      - "TU_IP:8190:8190"
+    env_file: .env
+    environment:
+      TZ: America/Caracas
+    volumes:
+      - ./datos:/datos
