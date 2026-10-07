@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS docs(
 CREATE TABLE IF NOT EXISTS capitulos(
   id INTEGER PRIMARY KEY AUTOINCREMENT, doc_id TEXT, agente_id TEXT, orden INTEGER,
   titulo TEXT, resumen TEXT, claves TEXT, texto TEXT, simplificado INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS semillas(nombre TEXT PRIMARY KEY);   -- paneles de serie ya sembrados
 CREATE INDEX IF NOT EXISTS i_cap_doc ON capitulos(doc_id);
 CREATE INDEX IF NOT EXISTS i_cap_ag ON capitulos(agente_id);
 CREATE INDEX IF NOT EXISTS i_docs_ag ON docs(agente_id);

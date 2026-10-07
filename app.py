@@ -12,6 +12,7 @@ import bd
 import config
 import fabrica
 import ia
+import paneles_base
 import pools
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
@@ -431,6 +432,11 @@ def arrancar():
     with bd.db() as c:
         if not c.execute("SELECT 1 FROM paneles").fetchone():
             guardar_panel(c, None, PANEL_EJEMPLO)
+        for p in paneles_base.PANELES:   # una sola vez: si el usuario lo borra, no vuelve
+            if not c.execute("SELECT 1 FROM semillas WHERE nombre=?", (p["nombre"],)).fetchone():
+                if not c.execute("SELECT 1 FROM paneles WHERE nombre=?", (p["nombre"],)).fetchone():
+                    guardar_panel(c, None, p)
+                c.execute("INSERT INTO semillas VALUES(?)", (p["nombre"],))
 
 
 arrancar()

@@ -62,3 +62,15 @@ def test_pool_por_agente_via_api(cliente, falsos):
     # borrar el documento limpia capítulos e índice
     assert cliente.delete(f"/api/docs/{d['id']}").status_code == 204
     assert cliente.get(f"/api/paneles/{p['id']}/pools").get_json() == {}
+
+
+def test_paneles_de_serie_se_siembran_una_vez(cliente):
+    import app as aplicacion
+    import paneles_base
+    nombres = [p["nombre"] for p in cliente.get("/api/paneles").get_json()]
+    assert all(p["nombre"] in nombres for p in paneles_base.PANELES)
+    filo = next(p for p in cliente.get("/api/paneles").get_json() if p["nombre"] == "Panel Filosófico")
+    assert {"Materialismo filosófico", "Teología"} <= {a["rol"] for a in filo["agentes"]}
+    cliente.delete(f"/api/paneles/{filo['id']}")
+    aplicacion.arrancar()   # un reinicio no lo resucita
+    assert "Panel Filosófico" not in [p["nombre"] for p in cliente.get("/api/paneles").get_json()]

@@ -24,7 +24,13 @@
       <span class="lema">Consejo de expertos</span>
     </span>
   </a>
-  <nav id="paneles" class="paneles" aria-label="Paneles"></nav>
+  <div class="selector">
+    <button id="selPanel" type="button" aria-haspopup="true" aria-expanded="false">
+      <span class="sobre">Panel en sesión</span>
+      <span class="actual"><span id="selNombre">—</span><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span>
+    </button>
+    <div id="menuPaneles" class="menu" hidden role="menu"></div>
+  </div>
   <div class="acciones">
     <button id="abrirPools" class="enlace" data-i="libros" title="Bibliotecas de conocimiento (pools) de cada experto">Bibliotecas</button>
     <button id="historial" class="enlace" data-i="actas" title="Historial de la conversación">Actas</button>
@@ -34,6 +40,8 @@
 </header>
 
 <main id="escena">
+  <div id="fondo" aria-hidden="true"></div>
+  <a class="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
   <svg id="hemiciclo" aria-hidden="true"></svg>
   <div id="arco"></div>
 

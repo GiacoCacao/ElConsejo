@@ -52,7 +52,8 @@ function md(t) {  // markdown mínimo, siempre sobre texto escapado
 function monograma(a) {
   const m = (a.emoji || '').trim();
   if (/^[\p{L}]{1,3}$/u.test(m)) return m.toUpperCase();
-  const p = (a.nombre || '?').trim().split(/\s+/);
+  const todas = (a.nombre || '?').trim().split(/\s+/), sin = todas.filter(w => !w.endsWith('.'));   // sin «Dr.», «P.»…
+  const p = sin.length ? sin : todas;
   return (p.length > 1 ? p[0][0] + p[1][0] : p[0][0]).toUpperCase();
 }
 function avisar(texto, mal = false) {
@@ -89,14 +90,25 @@ async function refrescarAgentes() {   // recuentos de pools, sin tocar la conver
 }
 
 function pintarTabs() {
-  $('#paneles').innerHTML = '';
+  $('#selNombre').textContent = panel ? panel.nombre : 'Sin paneles';
+  const menu = $('#menuPaneles'); menu.innerHTML = '';
   for (const p of paneles) {
     const b = document.createElement('button');
-    b.className = panel && p.id === panel.id ? 'act' : '';
-    b.textContent = p.nombre; b.title = p.descripcion || p.nombre; b.onclick = () => cargar(p.id);
-    $('#paneles').append(b);
+    b.type = 'button'; b.setAttribute('role', 'menuitem'); b.className = 'item' + (panel && p.id === panel.id ? ' act' : '');
+    b.innerHTML = `<div class="t">${esc(p.nombre)}</div><div class="d">${esc(p.descripcion || '')}</div>
+      <div class="caras">${p.agentes.slice(0, 7).map(a => `<span style="--c:${a.color}">${esc(monograma(a))}</span>`).join('')}
+      <em>${p.agentes.length} expertos</em></div>`;
+    b.onclick = () => { abrirMenu(false); cargar(p.id); };
+    menu.append(b);
   }
 }
+function abrirMenu(si) {
+  $('#menuPaneles').hidden = !si; $('#selPanel').setAttribute('aria-expanded', si);
+  if (si) ($('#menuPaneles .item.act') || $('#menuPaneles .item'))?.focus();
+}
+$('#selPanel').onclick = e => { e.stopPropagation(); abrirMenu($('#menuPaneles').hidden); };
+document.addEventListener('click', e => { if (!e.target.closest('.selector')) abrirMenu(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#menuPaneles').hidden) { abrirMenu(false); $('#selPanel').focus(); } });
 
 // ---- hemiciclo ----
 function geometria() {
@@ -253,7 +265,7 @@ $('#escena').addEventListener('drop', e => { e.preventDefault(); if (e.dataTrans
 $('#texto').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#chat').requestSubmit(); } });
 $('#texto').addEventListener('input', autoAlto);
 document.addEventListener('keydown', e => {
-  if (document.activeElement.matches('input,textarea,select') || document.querySelector('dialog[open]')) return;
+  if (document.activeElement.matches('input,textarea,select') || document.querySelector('dialog[open]') || !$('#menuPaneles').hidden) return;
   if (e.key === 'ArrowRight') mover(1); else if (e.key === 'ArrowLeft') mover(-1);
 });
 

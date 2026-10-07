@@ -18,6 +18,13 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Paneles de serie
+
+Se crean una sola vez al arrancar (`paneles_base.py`); si se borran, no vuelven: **Empresarial**,
+**Marketing y Ventas**, **Técnico Moderno**, **Psicológico**, **Financiero**, **Filosófico** (con
+materialismo filosófico y teología, entre otras escuelas) e **Importaciones a Venezuela**, con seis
+expertos cada uno.
+
 ## Puesta en marcha
 
 ```bash
@@ -54,3 +61,10 @@ pip install -r requirements.txt pytest && python -m pytest -q
 ```
 
 No incluye autenticación: pensado para una red privada (p. ej. Tailscale).
+
+## Créditos
+
+- Fondo: *United Nations Headquarters — Security Council chamber, straight-on view*, foto de
+  [Jdforrester](https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg),
+  licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adaptada: recortada, virada a tonos cálidos y oscurecida.
+- Tipografías Cormorant Garamond e Inter, SIL Open Font License 1.1 (`static/fuentes/LICENCIAS.txt`).
