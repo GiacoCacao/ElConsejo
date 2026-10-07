@@ -32,6 +32,7 @@
     <div id="menuPaneles" class="menu" hidden role="menu"></div>
   </div>
   <div class="acciones">
+    <button id="abrirConsultor" class="enlace" data-i="lupa" title="Consultor general: aclara palabras, conceptos y siglas sin intervenir en el debate">Consultor</button>
     <button id="abrirPools" class="enlace" data-i="libros" title="Bibliotecas de conocimiento (pools) de cada experto">Bibliotecas</button>
     <button id="abrirSesiones" class="enlace" data-i="sesiones" title="Registro de sesiones y actas de cierre">Sesiones</button>
     <button id="historial" class="enlace" data-i="actas" title="Transcripción de la sesión en curso">Transcripción</button>
@@ -207,6 +208,24 @@
   <div id="ajustesCuerpo"></div>
 </dialog>
 
+<dialog id="consultor" class="consultor" aria-label="Consultor general">
+  <div class="cab">
+    <div><div class="sobre">Asesoría interna · fuera del debate</div><h2>Consultor general</h2></div>
+    <span class="grow"></span>
+    <button type="button" id="consLimpiar" class="enlace peq" title="Borrar el historial de consultas">Limpiar</button>
+    <button type="button" id="cerrarConsultor" class="icono" data-i="x" aria-label="Cerrar"></button>
+  </div>
+  <div id="consHist" class="cons-hist"></div>
+  <form id="consForm" class="cons-form" autocomplete="off">
+    <div id="consCtx" class="cons-ctx" hidden></div>
+    <div class="campo">
+      <input id="consPregunta" maxlength="500" placeholder="¿Qué palabra o concepto quiere aclarar?">
+      <button type="submit" class="dorado" id="consEnviar"><span class="etq">Consultar</span></button>
+    </div>
+  </form>
+</dialog>
+<button type="button" id="consSel" class="cons-sel" hidden></button>
+
 <dialog id="confirmar" class="modal estrecho">
   <div class="sobre">Confirmación</div>
   <p id="confirmarTexto"></p>
@@ -220,5 +239,6 @@
 <script src="/static/consejo.js"></script>
 <script src="/static/sesiones.js"></script>
 <script src="/static/ajustes.js"></script>
+<script src="/static/consultor.js"></script>
 </body>
 </html>

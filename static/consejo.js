@@ -26,6 +26,7 @@ const ICONOS = {
   imprimir: '<path d="M7 9V3.5h10V9M7 17.5H4.5v-8h15v8H17M7 14h10v6.5H7z"/>',
   descargar: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>',
   enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
+  lupa: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5M8.5 10.5h4M10.5 8.5v4"/>',
   deslizadores: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   salir: '<path d="M14 4.5h5.5v15H14M10 8l-4 4 4 4M6 12h10"/>',
   arriba: '<path d="M6 15l6-6 6 6"/>', abajo: '<path d="M6 9l6 6 6-6"/>',
@@ -43,6 +44,31 @@ function hidratar(raiz = document) {
 const ORNAMENTO = '<svg class="orn" viewBox="0 0 120 14" aria-hidden="true"><path d="M0 7h46M74 7h46" stroke="#c9a96e" stroke-width=".8"/><path d="M60 1l6 6-6 6-6-6z" fill="none" stroke="#c9a96e" stroke-width=".8"/><circle cx="60" cy="7" r="1.4" fill="#c9a96e"/></svg>';
 
 // ---- utilidades ----
+// respuesta en flujo (líneas JSON): llama a alTrozo con cada trozo de texto y devuelve el evento final
+async function flujo(url, alTrozo, opt = {}) {
+  const r = await fetch(url, { method: 'POST', ...opt });
+  if (r.status === 401) { location.href = '/login'; throw new Error('Inicie sesión para continuar'); }
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
+  const lector = r.body.getReader(), dec = new TextDecoder();
+  let buf = '', fin = null;
+  for (;;) {
+    const { value, done } = await lector.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n')) >= 0) {
+      const linea = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!linea) continue;
+      const ev = JSON.parse(linea);
+      if (ev.t === 'd') alTrozo(ev.x); else if (ev.t === 'fin') fin = ev;
+    }
+  }
+  if (!fin) throw new Error('La respuesta se cortó antes de terminar');
+  return fin;
+}
+let vivo = {}, rafMesa = 0;   // texto que cada experto está escribiendo ahora mismo
+const repintarMesa = () => { if (!rafMesa) rafMesa = requestAnimationFrame(() => { rafMesa = 0; pintarMesa(); }); };
+
 const api = async (url, opt) => {
   const r = await fetch(url, opt);
   if (r.status === 401) { location.href = '/login'; throw new Error('Inicie sesión para continuar'); }
@@ -238,9 +264,15 @@ function pintarMesa() {
     if (m.fuentes.length) h += `<div class="fuentes"><div class="rot">Fuentes consultadas</div>` + m.fuentes.map(f =>
       `<div class="f"><span>${esc(f.doc)}</span><span>Cap. ${f.capitulo} · ${esc(f.titulo)}</span></div>`).join('') + '</div>';
   }
-  if (estado[a.id] === 'pensando') h += `<div class="pensando-txt">${suyos.length ? 'Preparando su réplica' : 'Estudiando la consulta'}<span class="puntos"><i></i><i></i><i></i></span></div>`;
+  if (estado[a.id] === 'hablando' && vivo[a.id]) {
+    if (suyos.length) h += `<div class="replica">Réplica ${ROMANO((suyos[suyos.length - 1].ronda || 0) + 1)}</div>`;
+    h += `<div class="en-vivo">${md(vivo[a.id])}</div>`;
+  }
+  else if (estado[a.id] === 'pensando' || estado[a.id] === 'hablando') h += `<div class="pensando-txt">${suyos.length ? 'Preparando su réplica' : 'Estudiando la consulta'}<span class="puntos"><i></i><i></i><i></i></span></div>`;
   else if (!suyos.length) h += '<p class="pensando-txt">Aún no se ha pronunciado.</p>';
+  const abajo = r.scrollHeight - r.scrollTop - r.clientHeight < 40;   // seguir el texto si se estaba al final
   r.innerHTML = h + '</div>';
+  if (estado[a.id] === 'hablando' && abajo) r.scrollTop = r.scrollHeight;
   r.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => mover(+b.dataset.mv));
   if (suyos.some(m => m.error)) r.classList.add('error');
 }
@@ -329,8 +361,18 @@ $('#chat').onsubmit = async e => {
       const uno = async id => {
         if (enOrden) { estado[id] = 'pensando'; progreso.turno = nombreDe(id); sel = id; pintarArco(); pintarMesa(); }
         let m;
-        try { m = await api(`/api/preguntas/${q.pregunta_id}/agentes/${id}?ronda=${r}`, { method: 'POST' }); }
+        vivo[id] = '';
+        try {
+          m = (await flujo(`/api/preguntas/${q.pregunta_id}/agentes/${id}/flujo?ronda=${r}`, x => {
+            if (!vigente()) return;
+            const primero = !vivo[id];
+            vivo[id] += x;
+            if (primero) { estado[id] = 'hablando'; if (!sel) sel = id; pintarArco(); }
+            if (sel === id) repintarMesa();
+          })).m;
+        }
         catch (err) { m = { rol: 'agent', agente_id: id, pregunta_id: q.pregunta_id, ronda: r, texto: err.message, error: true, imagenes: [], adjuntos: [], fuentes: [], ts: Date.now() / 1000 }; }
+        delete vivo[id];
         if (!vigente()) return null;
         msgs.push(m); estado[id] = m.error ? 'error' : 'listo'; progreso.hechos++;
         if (!sel) sel = id;

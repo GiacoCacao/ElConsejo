@@ -76,7 +76,9 @@ button:disabled{cursor:default;opacity:.55}
 .menu .item .caras span{width:24px;height:24px;border-radius:50%;margin-right:-5px;display:grid;place-items:center;font:500 10.5px var(--serif);
   color:var(--oro-claro);background:#12141a;border:1px solid color-mix(in srgb,var(--c) 50%,var(--oro))}
 .menu .item .caras em{margin-left:14px;font-style:normal;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--humo)}
-.acciones{display:flex;align-items:center;gap:2px;flex:none}
+.acciones{display:flex;align-items:center;gap:0;flex:none}
+.acciones .enlace{padding:9px 9px;letter-spacing:.13em}
+.selector{min-width:240px}
 
 /* ---- escena ---- */
 #escena{position:relative;flex:1;min-height:0;overflow:hidden;background:var(--noche);isolation:isolate}
@@ -117,6 +119,9 @@ button:disabled{cursor:default;opacity:.55}
   -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#000 calc(100% - 1px));
   mask:radial-gradient(farthest-side,transparent calc(100% - 1.5px),#000 calc(100% - 1px))}
 .agente.pensando .anillo{opacity:1;animation:girar 1.4s linear infinite}
+.agente.hablando .anillo{opacity:1;animation:girar .9s linear infinite}
+.agente.hablando .medallon{border-color:var(--oro-claro);box-shadow:0 0 0 4px rgba(201,169,110,.1),0 0 34px -4px rgba(201,169,110,.55),0 18px 40px -18px #000}
+.en-vivo>:last-child::after{content:"";display:inline-block;width:2px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--oro-claro);animation:latir 1s infinite}
 @keyframes girar{to{transform:rotate(360deg)}}
 .medallon .punto{position:absolute;bottom:-3px;left:50%;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;
   background:var(--oro);box-shadow:0 0 10px var(--oro);opacity:0;transform:scale(.4);transition:all .4s var(--curva)}
@@ -493,6 +498,39 @@ body.observador [data-del],body.observador #actaTrasladar,body.observador .trasl
 body.observador #tablaTarifas input{pointer-events:none;border-color:transparent}
 body.observador #mesa{bottom:24px}
 
+/* ---- consultor general ---- */
+dialog.consultor{position:fixed;inset:0 0 0 auto;margin:0;width:min(470px,100%);height:100vh;max-height:none;padding:0;border:0;
+  border-left:1px solid var(--linea-fuerte);color:var(--marfil);background:linear-gradient(180deg,#10121a,#090a0e);
+  box-shadow:-30px 0 80px -20px #000;z-index:12}
+dialog.consultor[open]{display:flex;flex-direction:column;animation:entrarL .45s var(--curva)}
+dialog.consultor::backdrop{background:rgba(3,4,6,.5)}
+.consultor .cab{padding:24px 24px 16px;border-bottom:1px solid var(--linea)}
+.cons-hist{flex:1;overflow:auto;padding:16px 24px 10px;display:flex;flex-direction:column;gap:14px}
+.cons-vacio{margin:auto 0;text-align:center;color:var(--humo);padding:20px 10px}
+.cons-vacio .orn{width:110px;height:14px;margin:0 auto 14px;display:block;opacity:.7}
+.cons-vacio p{font:italic 18px/1.45 var(--serif);margin:0 0 10px;color:var(--perla)}
+.cons-vacio small{font-size:12px;line-height:1.55;display:block}
+.cons-item{border:1px solid var(--linea);border-radius:2px;background:rgba(255,255,255,.015)}
+.cons-item .pq{padding:12px 14px 10px;border-bottom:1px solid rgba(201,169,110,.1)}
+.cons-item .pq b{display:block;font:500 19px/1.3 var(--serif);color:var(--oro-claro)}
+.cons-item .pq em{display:block;margin-top:5px;font:italic 13.5px/1.4 var(--serif);color:var(--humo)}
+.cons-item .rs{padding:12px 14px 4px}
+.cons-item .rs.error{color:var(--rojo)}
+.cons-item .cuerpo{font-size:13.5px;line-height:1.65}
+.cons-item .hora{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--ceniza);padding:0 14px 10px}
+.cons-form{padding:14px 24px 22px;border-top:1px solid var(--linea)}
+.cons-form .campo{display:flex;gap:10px;align-items:center}
+.cons-form input{flex:1;background:transparent;border:0;border-bottom:1px solid var(--linea-fuerte);color:var(--marfil);font:400 15px var(--sans);padding:10px 2px;outline:none}
+.cons-form input:focus{border-color:var(--oro)}
+.cons-form input::placeholder{font:italic 17px var(--serif);color:var(--humo)}
+.cons-ctx{display:flex;gap:8px;align-items:flex-start;font:italic 13px/1.4 var(--serif);color:var(--perla);border-left:2px solid var(--oro);padding:4px 10px;margin-bottom:10px;background:rgba(201,169,110,.05)}
+.cons-ctx span{flex:1;max-height:3.9em;overflow:hidden}
+.cons-ctx button{color:var(--humo);padding:0}
+.cons-sel{position:fixed;z-index:40;transform:translate(-50%,8px);background:linear-gradient(135deg,#e9d7ac,#b8975c);color:#16120a;
+  font:600 10.5px var(--sans);letter-spacing:.16em;text-transform:uppercase;padding:7px 12px;border-radius:2px;box-shadow:0 10px 30px -8px #000;white-space:nowrap;max-width:320px;overflow:hidden;text-overflow:ellipsis}
+.cons-sel .ico{width:13px;height:13px}
+body.observador #abrirConsultor,body.observador .cons-sel{display:none!important}
+
 /* ---- avisos ---- */
 #avisos{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .aviso-t{background:#14161d;border:1px solid var(--linea-fuerte);border-left:2px solid var(--oro);padding:11px 18px;font-size:13px;color:var(--marfil);
@@ -500,6 +538,8 @@ body.observador #mesa{bottom:24px}
 .aviso-t.mal{border-left-color:var(--rojo)}
 
 /* ---- adaptable ---- */
+@media (max-width:1460px){#historial span.etq,#editar span.etq{display:none}}
+@media (max-width:1280px){.acciones .enlace span.etq{display:none}}
 @media (max-width:1100px){
   .barra{padding:0 20px;gap:16px}.acciones .enlace span.etq{display:none}
   .marca .lema{display:none}

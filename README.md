@@ -18,6 +18,15 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Tiempo real y consultor general
+
+- **Respuestas en tiempo real**: el texto de cada experto aparece mientras lo escribe (flujo de la API; el
+  servidor reenvía los trozos como líneas JSON). Si la conexión se corta a mitad, se conserva lo dicho.
+- **Consultor general**: asesor interno fuera del hemiciclo, en un panel lateral. Aclara palabras, conceptos,
+  siglas y referencias (definición, sentido en el contexto, ejemplo, términos relacionados) sin opinar sobre el
+  asunto. Se puede **seleccionar un término** en una respuesta, la transcripción o un acta y pulsar «Consultar».
+  Su historial se guarda en el navegador; su gasto cuenta en el consumo del panel.
+
 ## Sesiones, votación y actas
 
 - **Sesión**: cada asunto se trata en una sesión numerada por consejo (botón *Iniciar sesión*; si se consulta sin

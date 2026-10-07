@@ -9,7 +9,8 @@ import uuid
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session
+from flask import (Flask, Response, abort, jsonify, redirect, request, send_file, send_from_directory, session,
+                   stream_with_context)
 
 import bd
 import config
@@ -455,9 +456,8 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
     return msgs, fuentes
 
 
-@app.post("/api/preguntas/<int:qid>/agentes/<aid>")
-def responder(qid, aid):
-    ronda = max(0, min(config.MAX_RONDAS, request.args.get("ronda", 0, type=int)))
+def _preparar(qid, aid, ronda):
+    """Lo necesario para que un experto intervenga: panel, agente, pregunta y mensajes para la IA."""
     with bd.db() as c:
         q = c.execute("SELECT * FROM mensajes WHERE id=? AND rol='user'", (qid,)).fetchone()
         if not q:
@@ -466,25 +466,125 @@ def responder(qid, aid):
         agente = next((a for a in panel["agentes"] if a["id"] == aid), None)
         if not agente:
             abort(404)
-        error, texto, fuentes = False, "", []
         try:
             msgs, fuentes = _mensajes_ia(c, panel, agente, qid, ronda)
+            return panel, agente, q, msgs, fuentes, None
         except Exception as e:  # noqa: BLE001
-            error, texto, msgs = True, f"No se pudo preparar la consulta: {e}"[:400], None
+            return panel, agente, q, None, [], f"No se pudo preparar la consulta: {e}"[:400]
+
+
+def _guardar(panel, q, aid, ronda, texto, error, fuentes):
+    with bd.db() as c:
+        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts,sesion_id)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (panel["id"], q["id"], "agent", aid, texto, int(error), ronda,
+                         json.dumps(fuentes, ensure_ascii=False), time.time(), q["sesion_id"]))
+        return msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+def _ronda():
+    return max(0, min(config.MAX_RONDAS, request.args.get("ronda", 0, type=int)))
+
+
+@app.post("/api/preguntas/<int:qid>/agentes/<aid>")
+def responder(qid, aid):
+    ronda = _ronda()
+    panel, agente, q, msgs, fuentes, error = _preparar(qid, aid, ronda)
+    texto = error or ""
     if not error:
         uso = {}
         try:
             texto = ia.llamar(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"],
                               max_tokens=400 if ronda else 800, uso=uso)
-            consumo.registrar(panel["id"], aid, qid, "replica" if ronda else "respuesta", uso)
+            consumo.registrar(panel["id"], aid, q["id"], "replica" if ronda else "respuesta", uso)
         except Exception as e:  # noqa: BLE001 — se muestra al usuario en la burbuja
             error, texto = True, str(e)[:400]
-    with bd.db() as c:
-        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts,sesion_id)"
-                        " VALUES(?,?,?,?,?,?,?,?,?,?)",
-                        (panel["id"], qid, "agent", aid, texto, int(error), ronda,
-                         json.dumps(fuentes, ensure_ascii=False), time.time(), q["sesion_id"]))
-        return jsonify(msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone()))
+    return jsonify(_guardar(panel, q, aid, ronda, texto, bool(error), fuentes))
+
+
+def _linea(**d):
+    return json.dumps(d, ensure_ascii=False) + "\n"
+
+
+def flujo_ndjson(gen):
+    """Respuesta que se va enviando por líneas JSON: {"t":"d","x":trozo} … {"t":"fin",…}."""
+    return Response(stream_with_context(gen), mimetype="application/x-ndjson",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.post("/api/preguntas/<int:qid>/agentes/<aid>/flujo")
+def responder_flujo(qid, aid):
+    """Como `responder`, pero el texto llega mientras el experto lo escribe."""
+    ronda = _ronda()
+    panel, agente, q, msgs, fuentes, error = _preparar(qid, aid, ronda)
+
+    def gen():
+        if error:
+            yield _linea(t="fin", m=_guardar(panel, q, aid, ronda, error, True, fuentes))
+            return
+        partes, uso, fallo = [], {}, None
+        try:
+            for x in ia.llamar_flujo(msgs, modelo=agente["modelo"], temperatura=agente["temperatura"],
+                                     max_tokens=400 if ronda else 800, uso=uso):
+                partes.append(x)
+                yield _linea(t="d", x=x)
+            consumo.registrar(panel["id"], aid, q["id"], "replica" if ronda else "respuesta", uso)
+        except Exception as e:  # noqa: BLE001
+            fallo = str(e)[:400]
+        texto = "".join(partes).strip()
+        if fallo and texto:   # se cortó a mitad: se guarda lo dicho y se avisa
+            texto += f"\n\n*(Intervención interrumpida: {fallo})*"
+        yield _linea(t="fin", m=_guardar(panel, q, aid, ronda, texto or fallo or "(sin respuesta)",
+                                         bool(fallo) and not partes, fuentes))
+    return flujo_ndjson(gen())
+
+
+# ---- consultor general (fuera del hemiciclo) ----------------------------------------
+SISTEMA_CONSULTOR = (
+    "Eres el Consultor General del Consejo: un asesor interno, neutral y erudito, que no forma parte del "
+    "debate. Aclaras el significado de palabras, conceptos, siglas, términos técnicos o jurídicos, nombres y "
+    "referencias que aparecen en las deliberaciones. No opinas sobre el asunto que se debate ni recomiendas "
+    "decisiones. Respondes en español, en un máximo de 160 palabras, con este orden:\n"
+    "**Definición:** … (si es ambiguo, las acepciones principales)\n"
+    "**En este contexto:** … (solo si se te da un pasaje o un asunto)\n"
+    "**Ejemplo:** …\n**Relacionados:** 2 a 4 términos.\n"
+    "Si no conoces el término con certeza o puede haber cambiado (normas, cifras, cargos), dilo con claridad.")
+
+
+@app.post("/api/consultor")
+def consultor():
+    d = request.get_json(force=True)
+    pregunta = (d.get("pregunta") or "").strip()[:500]
+    if not pregunta:
+        return jsonify(error="Escriba la palabra o el concepto que quiere aclarar"), 400
+    contexto = (d.get("contexto") or "").strip()[:1200]
+    panel = sesion_r = None
+    if d.get("panel_id"):
+        with bd.db() as c:
+            r = c.execute("SELECT * FROM paneles WHERE id=?", (d["panel_id"],)).fetchone()
+            panel = panel_dict(c, r) if r else None
+            sesion_r = sesiones.activa(c, panel["id"]) if panel else None
+    datos = []
+    if panel:
+        datos.append(f"Consejo: {panel['nombre']}")
+    if sesion_r:
+        datos.append(f"Asunto de la sesión: {sesion_r['asunto']}")
+    if contexto:
+        datos.append(f"Pasaje donde aparece: «{contexto}»")
+    msgs = [{"role": "system", "content": f"{SISTEMA_CONSULTOR}\n\nHoy es {fecha_actual()}."},
+            {"role": "user", "content": ("\n".join(datos) + "\n\n" if datos else "") + f"Consulta: {pregunta}"}]
+
+    def gen():
+        partes, uso, fallo = [], {}, None
+        try:
+            for x in ia.llamar_flujo(msgs, temperatura=0.3, max_tokens=450, uso=uso):
+                partes.append(x)
+                yield _linea(t="d", x=x)
+            consumo.registrar(panel["id"] if panel else None, None, None, "consultor", uso)
+        except Exception as e:  # noqa: BLE001
+            fallo = str(e)[:400]
+        yield _linea(t="fin", texto="".join(partes).strip(), error=fallo if not partes else None)
+    return flujo_ndjson(gen())
 
 
 # ---- ajustes: tope de gasto y copias de seguridad --------------------------------
