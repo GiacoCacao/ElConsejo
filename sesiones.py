@@ -52,6 +52,8 @@ def sesion_dict(c, r, panel=None):
     comp = json.loads(r["composicion"] or "null")
     return {"id": r["id"], "panel_id": r["panel_id"], "panel": panel["nombre"], "numero": r["numero"],
             "composicion": comp, "limite_palabras": r["limite_palabras"],
+            "orden_dia": json.loads(r["orden_dia"] or "null") or [r["asunto"]], "punto": r["punto"] or 0,
+            "receso": bool(r["receso"]), "oradores": json.loads(r["oradores"] or "[]"),
             "asunto": r["asunto"], "estado": r["estado"], "modo_debate": r["modo_debate"],
             "orden": _orden(json.loads(r["orden"] or "[]"), panel), "anexos": _anexos_info(c, r),
             "abierta": r["abierta"], "cerrada": r["cerrada"], "acuerdo": r["acuerdo"],
@@ -75,7 +77,12 @@ def activa(c, pid):
                      "ORDER BY id DESC LIMIT 1", (pid,)).fetchone()
 
 
-def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None):
+def puntos_limpios(lista, asunto):
+    puntos = [str(x).strip()[:200] for x in (lista or []) if str(x).strip()][:10]
+    return puntos or [(asunto or "").strip()[:200] or "Consulta al Consejo"]
+
+
+def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None, orden_dia=None):
     panel = _app()._panel(c, pid)
     numero = c.execute("SELECT COALESCE(MAX(numero),0)+1 FROM sesiones WHERE panel_id=?", (pid,)).fetchone()[0]
     validos = []
@@ -86,11 +93,12 @@ def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None):
             continue
         if c.execute("SELECT 1 FROM sesiones WHERE id=? AND acta IS NOT NULL", (a,)).fetchone() and a not in validos:
             validos.append(a)
-    cur = c.execute("INSERT INTO sesiones(panel_id,numero,asunto,estado,modo_debate,orden,anexos,abierta) "
-                    "VALUES(?,?,?,?,?,?,?,?)",
-                    (pid, numero, (asunto or "").strip()[:200] or "Consulta al Consejo", "abierta",
-                     modo if modo in ("orden", "simultaneo") else "orden",
-                     json.dumps(_orden(orden or [], panel)), json.dumps(validos), time.time()))
+    asunto = (asunto or "").strip()[:200] or "Consulta al Consejo"
+    cur = c.execute("INSERT INTO sesiones(panel_id,numero,asunto,estado,modo_debate,orden,anexos,abierta,orden_dia,punto) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,0)",
+                    (pid, numero, asunto, "abierta", modo if modo in ("orden", "simultaneo") else "orden",
+                     json.dumps(_orden(orden or [], panel)), json.dumps(validos), time.time(),
+                     json.dumps(puntos_limpios(orden_dia, asunto), ensure_ascii=False)))
     return cur.lastrowid
 
 
@@ -113,19 +121,23 @@ def texto_anexos(c, sesion_row, tope=3500):
     return "\n\n".join(partes)
 
 
-def transcripcion(c, sid, panel, tope=24000):
-    """Consultas e intervenciones de la sesión, en orden, como texto."""
+def transcripcion(c, sid, panel, tope=24000, punto=None):
+    """Consultas e intervenciones de la sesión (o de un punto del orden del día), en orden, como texto."""
     nombres = {a["id"]: f"{a['nombre']} ({a['rol'] or 'experto'}{', ' + a['comite'] if a.get('comite') else ''})"
                for a in panel["agentes"]}
     solo = {a["id"]: a["nombre"] for a in panel["agentes"]}
     lineas = []
-    for m in c.execute("SELECT * FROM mensajes WHERE sesion_id=? AND error=0 ORDER BY id", (sid,)):
+    filas = c.execute("SELECT * FROM mensajes WHERE sesion_id=? AND error=0 ORDER BY id", (sid,)).fetchall()
+    for m in filas:
+        if punto is not None and (m["punto"] or 0) != punto:
+            continue
         if m["rol"] == "user":
             a_quien = f" (consulta individual a {solo.get(m['destinatario'], 'un experto')})" if m["destinatario"] else ""
             lineas.append(f"\n**Consulta de la presidencia{a_quien}:** {m['texto'] or '(documentos o imágenes adjuntos)'}")
         else:
             quien = nombres.get(m["agente_id"], "Experto retirado")
-            tipo = {"palabra": " — en uso de la palabra", "alusion": " — por alusiones"}.get(m["modo"]) or (
+            tipo = {"palabra": " — en uso de la palabra", "alusion": " — por alusiones",
+                    "orden": " — cuestión de orden"}.get(m["modo"]) or (
                 f" — réplica {m['ronda']}" if m["ronda"] else "")
             lineas.append(f"**{quien}**{tipo}: {m['texto']}")
     t = "\n".join(lineas).strip()
@@ -144,7 +156,7 @@ def _secretaria(panel, prompt, max_tokens=700, uso_ctx=None):
 
 
 def _votacion_dict(c, v):
-    return {"id": v["id"], "sesion_id": v["sesion_id"], "tipo": v["tipo"], "propuesta": v["propuesta"],
+    return {"id": v["id"], "sesion_id": v["sesion_id"], "tipo": v["tipo"], "propuesta": v["propuesta"], "punto": v["punto"] or 0,
             "alternativas": json.loads(v["alternativas"] or "[]"), "estado": v["estado"], "intento": v["intento"],
             "resultado": json.loads(v["resultado"] or "null"), "ts": v["ts"],
             "votos": [dict(x) for x in c.execute("SELECT agente_id, opcion, motivo, error FROM votos "
@@ -204,7 +216,7 @@ def iniciar(pid):
         if r:
             return jsonify(error=f"Ya hay una sesión abierta (nº {r['numero']}). Ciérrela antes de iniciar otra.",
                            sesion=sesion_dict(c, r)), 409
-        sid = abrir(c, pid, d.get("asunto"), d.get("modo_debate", "orden"), d.get("orden"), d.get("anexos"))
+        sid = abrir(c, pid, d.get("asunto"), d.get("modo_debate", "orden"), d.get("orden"), d.get("anexos"), d.get("orden_dia"))
         return jsonify(sesion_dict(c, _sesion(c, sid))), 201
 
 
@@ -234,6 +246,10 @@ def editar(sid):
         if "anexos" in d:
             anexos = [int(a) for a in d["anexos"] if c.execute(
                 "SELECT 1 FROM sesiones WHERE id=? AND acta IS NOT NULL AND id<>?", (int(a), sid)).fetchone()]
+        if "orden_dia" in d:
+            puntos = puntos_limpios(d["orden_dia"], d.get("asunto") or r["asunto"])
+            c.execute("UPDATE sesiones SET orden_dia=?, punto=? WHERE id=?",
+                      (json.dumps(puntos, ensure_ascii=False), min(r["punto"] or 0, len(puntos) - 1), sid))
         c.execute("UPDATE sesiones SET asunto=?, modo_debate=?, orden=?, anexos=? WHERE id=?",
                   ((d.get("asunto") or r["asunto"]).strip()[:200],
                    d.get("modo_debate") if d.get("modo_debate") in ("orden", "simultaneo") else r["modo_debate"],
@@ -279,8 +295,10 @@ def propuesta(sid):
         if r["estado"] == "cerrada":
             return jsonify(error="La sesión está cerrada"), 409
         panel = _app()._panel(c, r["panel_id"])
-        debate = transcripcion(c, sid, panel, 16000)
+        debate = transcripcion(c, sid, panel, 16000, r["punto"] or 0)
         anexos = texto_anexos(c, r, 2000)
+        puntos = json.loads(r["orden_dia"] or "null") or [r["asunto"]]
+        punto_txt = puntos[min(r["punto"] or 0, len(puntos) - 1)]
         objeciones = ""
         if d.get("revisar"):
             v = c.execute("SELECT * FROM votaciones WHERE id=? AND sesion_id=?", (d["revisar"], sid)).fetchone()
@@ -293,7 +311,8 @@ def propuesta(sid):
                                           f"{o['motivo']}" for o in objs))
     if not debate:
         return jsonify(error="Aún no hay debate en esta sesión: plantee primero una consulta."), 400
-    base = f"Asunto de la sesión: {r['asunto']}\n\nDebate:\n{debate}" + (f"\n\nActas anexas:\n{anexos}" if anexos else "")
+    base = (f"Asunto de la sesión: {r['asunto']}\n" + (f"Punto del orden del día en debate: {punto_txt}\n" if len(puntos) > 1 else "")
+            + f"\nDebate:\n{debate}" + (f"\n\nActas anexas:\n{anexos}" if anexos else ""))
     try:
         if tipo == "consenso":
             prompt = (base + objeciones + "\n\nRedacta una PROPUESTA DE ACUERDO UNIFICADO que recoja los puntos de "
@@ -331,9 +350,9 @@ def abrir_votacion(sid):
         if r["estado"] == "cerrada":
             return jsonify(error="La sesión está cerrada"), 409
         intento = c.execute("SELECT COUNT(*)+1 FROM votaciones WHERE sesion_id=?", (sid,)).fetchone()[0]
-        cur = c.execute("INSERT INTO votaciones(sesion_id,tipo,propuesta,alternativas,estado,intento,ts) VALUES(?,?,?,?,?,?,?)",
+        cur = c.execute("INSERT INTO votaciones(sesion_id,tipo,propuesta,alternativas,estado,intento,ts,punto) VALUES(?,?,?,?,?,?,?,?)",
                         (sid, tipo, texto, json.dumps(alts if len(alts) >= 2 else [], ensure_ascii=False), "abierta",
-                         intento, time.time()))
+                         intento, time.time(), r["punto"] or 0))
         c.execute("UPDATE sesiones SET estado='votacion' WHERE id=?", (sid,))
         return jsonify(_votacion_dict(c, c.execute("SELECT * FROM votaciones WHERE id=?", (cur.lastrowid,)).fetchone())), 201
 
@@ -535,6 +554,10 @@ def componer_acta(c, s, panel, cierre_ts):
     L += ["", "## Orden del debate",
           "Intervenciones " + ("por turnos, en este orden:" if s["modo_debate"] == "orden" else "simultáneas; orden de referencia:")]
     L += [f"{n}. {nombres[i]['nombre']}" for n, i in enumerate(orden, 1)]
+    puntos = json.loads(s["orden_dia"] or "null") or [s["asunto"]]
+    varios = len(puntos) > 1
+    if varios:
+        L += ["", "## Orden del día"] + [f"{n}. {p}" for n, p in enumerate(puntos, 1)]
     anexos = _anexos_info(c, s)
     if anexos:
         L += ["", "## Documentos anexos"]
@@ -550,7 +573,8 @@ def componer_acta(c, s, panel, cierre_ts):
             if v["estado"] == "anulada":
                 continue
             modo = "Mayoría simple" if v["tipo"] == "mayoria" else "Acuerdo unificado (consenso)"
-            L += ["", f"### Votación {v['intento']} · {modo}"]
+            sobre = f" · punto {v['punto'] + 1}" if varios else ""
+            L += ["", f"### Votación {v['intento']}{sobre} · {modo}"]
             if v["alternativas"]:
                 L += ["Alternativas sometidas a votación:"] + [f"- **{a['letra']})** {a['texto']}" for a in v["alternativas"]]
             else:
@@ -562,9 +586,21 @@ def componer_acta(c, s, panel, cierre_ts):
                 L.append(f"- **{quien}** — {op}. {x['motivo']}")
             if v["resultado"]:
                 L += ["", f"**Resultado:** {v['resultado']['texto']}."]
+    mocs = c.execute("SELECT * FROM mociones WHERE sesion_id=? ORDER BY id", (s["id"],)).fetchall()
+    if mocs:
+        L += ["", "## Mociones de procedimiento"]
+        L += [f"- {m['detalle']}: {json.loads(m['resultado'])['texto']}." for m in mocs]
     L += ["", "## Acuerdos"]
-    if acuerdo:
-        L += ["Por votación, el Consejo adopta el siguiente acuerdo:", "", _cita(acuerdo)]
+    aprobados = {}
+    for v in vots:   # el último acuerdo aprobado de cada punto
+        if v["resultado"] and v["resultado"].get("aprobado"):
+            aprobados[v["punto"]] = v["resultado"]["acuerdo"]
+    if varios:
+        for n, p in enumerate(puntos):
+            L += ["", f"**Punto {n + 1}. {p}**", ""]
+            L += [_cita(aprobados[n])] if n in aprobados else ["No se adoptó acuerdo formal sobre este punto."]
+    elif acuerdo or aprobados:
+        L += ["Por votación, el Consejo adopta el siguiente acuerdo:", "", _cita(aprobados.get(0) or acuerdo)]
     else:
         L += ["No se adoptó un acuerdo formal por votación."]
     if conclusiones:
@@ -602,6 +638,23 @@ def descargar(sid):
                     headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
 
 
+@bp.get("/api/sesiones/<int:sid>/acta.<fmt>")
+def acta_con_membrete(sid, fmt):
+    """El acta de cierre en PDF o Word, con el membrete de Ajustes."""
+    import membrete
+    if fmt not in ("pdf", "docx"):
+        abort(404)
+    with bd.db() as c:
+        s = _sesion(c, sid)
+        p = c.execute("SELECT nombre FROM paneles WHERE id=?", (s["panel_id"],)).fetchone()
+    if not s["acta"]:
+        abort(404)
+    datos = (membrete.pdf if fmt == "pdf" else membrete.docx)(dict(s), p["nombre"] if p else "Consejo", s["acta"])
+    tipo = "application/pdf" if fmt == "pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return Response(datos, mimetype=tipo, headers={
+        "Content-Disposition": f'{"inline" if fmt == "pdf" else "attachment"}; filename="acta-sesion-{s["numero"]}.{fmt}"'})
+
+
 @bp.post("/api/sesiones/<int:sid>/trasladar")
 def trasladar(sid):
     """Lleva un acta a otro consejo: se anexa a su sesión abierta o abre una sesión para deliberarla."""
@@ -622,3 +675,132 @@ def trasladar(sid):
         nueva = abrir(c, destino, f"Deliberación del acta nº {s['numero']} del {origen['nombre'] if origen else 'otro consejo'}: "
                                   f"{s['asunto']}", anexos=[sid])
         return jsonify(panel_id=destino, sesion=sesion_dict(c, _sesion(c, nueva)), anexada=False), 201
+
+
+# ---- herramientas parlamentarias ----------------------------------------------------
+TIPOS_ORADOR = ("alusion", "pide", "orden")
+
+
+def agregar_oradores(c, sid, nuevos):
+    """Añade a la lista de oradores sin repetir; las cuestiones de orden pasan delante."""
+    r = c.execute("SELECT oradores FROM sesiones WHERE id=?", (sid,)).fetchone()
+    lista = json.loads((r and r["oradores"]) or "[]")
+    for n in nuevos:
+        if n.get("tipo") not in TIPOS_ORADOR or any(o["id"] == n["id"] for o in lista):
+            continue
+        item = {k: n.get(k) for k in ("id", "tipo", "por", "motivo") if n.get(k)}
+        if n["tipo"] == "orden":
+            lista.insert(sum(1 for o in lista if o["tipo"] == "orden"), item)
+        else:
+            lista.append(item)
+    c.execute("UPDATE sesiones SET oradores=? WHERE id=?", (json.dumps(lista, ensure_ascii=False), sid))
+    return lista
+
+
+def quitar_orador(c, sid, aid):
+    r = c.execute("SELECT oradores FROM sesiones WHERE id=?", (sid,)).fetchone()
+    lista = [o for o in json.loads((r and r["oradores"]) or "[]") if o["id"] != aid]
+    c.execute("UPDATE sesiones SET oradores=? WHERE id=?", (json.dumps(lista, ensure_ascii=False), sid))
+    return lista
+
+
+@bp.put("/api/sesiones/<int:sid>/oradores")
+def fijar_oradores(sid):
+    d = request.get_json(force=True)
+    with bd.db() as c:
+        r = _sesion(c, sid)
+        ids = {a["id"] for a in _app()._panel(c, r["panel_id"])["agentes"]}
+        lista = [{k: o.get(k) for k in ("id", "tipo", "por", "motivo") if o.get(k)}
+                 for o in d.get("oradores") or [] if o.get("id") in ids and o.get("tipo") in TIPOS_ORADOR]
+        c.execute("UPDATE sesiones SET oradores=? WHERE id=?", (json.dumps(lista, ensure_ascii=False), sid))
+        return jsonify(lista)
+
+
+@bp.post("/api/sesiones/<int:sid>/punto")
+def cambiar_punto(sid):
+    """La presidencia pasa a otro punto del orden del día."""
+    d = request.get_json(force=True)
+    with bd.db() as c:
+        r = _sesion(c, sid)
+        if r["estado"] == "cerrada":
+            return jsonify(error="La sesión está cerrada"), 409
+        puntos = json.loads(r["orden_dia"] or "null") or [r["asunto"]]
+        n = max(0, min(len(puntos) - 1, int(d.get("punto", 0))))
+        c.execute("UPDATE sesiones SET punto=?, oradores='[]' WHERE id=?", (n, sid))
+        return jsonify(sesion_dict(c, _sesion(c, sid)))
+
+
+@bp.post("/api/sesiones/<int:sid>/receso")
+def receso(sid):
+    """Cuarto intermedio: se suspenden las intervenciones hasta que la presidencia reanude."""
+    activo = bool((request.get_json(force=True) or {}).get("activo"))
+    with bd.db() as c:
+        _sesion(c, sid)
+        c.execute("UPDATE sesiones SET receso=? WHERE id=?", (int(activo), sid))
+        return jsonify(sesion_dict(c, _sesion(c, sid)))
+
+
+MOCIONES = {
+    "cierre": "Moción de cierre del debate: dar por suficientemente debatido el punto y pasar a la votación del acuerdo",
+    "siguiente": "Moción de orden: pasar al siguiente punto del orden del día",
+    "limite": "Moción para limitar el tiempo de palabra a {n} palabras por intervención",
+    "cuarto": "Moción de cuarto intermedio: suspender brevemente la sesión",
+}
+
+
+@bp.post("/api/sesiones/<int:sid>/mociones")
+def mocion(sid):
+    """La presidencia somete una moción de procedimiento; los delegados la votan (mayoría simple)."""
+    from concurrent.futures import ThreadPoolExecutor
+    d = request.get_json(force=True)
+    tipo = d.get("tipo")
+    if tipo not in MOCIONES:
+        return jsonify(error="Moción no reconocida"), 400
+    n = None
+    if tipo == "limite":
+        try:
+            n = max(40, min(400, int(d.get("palabras") or 0)))
+        except (TypeError, ValueError):
+            return jsonify(error="Indique el nuevo tiempo de palabra"), 400
+    texto = MOCIONES[tipo].format(n=n)
+    a_mod = _app()
+    with bd.db() as c:
+        s = _sesion(c, sid)
+        if s["estado"] == "cerrada":
+            return jsonify(error="La sesión está cerrada"), 409
+        panel = a_mod._panel(c, s["panel_id"])
+        debate = transcripcion(c, sid, panel, 5000, s["punto"] or 0)
+
+    def voto(a):
+        uso = {}
+        try:
+            t = ia.llamar([{"role": "system", "content": a_mod.sistema_agente(panel, a)},
+                           {"role": "user", "content": f"Debate del punto en curso (extracto):\n{debate or '(aún sin intervenciones)'}\n\n"
+                            f"La presidencia somete a votación de procedimiento: «{texto}». Vota pensando en el buen "
+                            "orden del debate. Responde EXACTAMENTE con una línea: «SÍ» o «NO», y un motivo de menos de 10 palabras."}],
+                          temperatura=0.2, max_tokens=40, uso=uso, agente=a)
+            consumo.registrar(panel["id"], a["id"], None, "mocion", uso)
+        except ia.IAError:
+            return {"agente_id": a["id"], "voto": "abstencion", "motivo": "No pudo votar"}
+        v = t.strip().upper()
+        opcion = "favor" if re.match(r"\W*S[ÍI]\b", v) else "contra" if re.match(r"\W*NO\b", v) else "abstencion"
+        return {"agente_id": a["id"], "voto": opcion, "motivo": re.sub(r"^\W*(S[ÍI]|NO)\W*", "", t.strip(), flags=re.I)[:120]}
+
+    with ThreadPoolExecutor(6) as ex:
+        votos = list(ex.map(voto, panel["agentes"]))
+    f = sum(1 for v in votos if v["voto"] == "favor")
+    k = sum(1 for v in votos if v["voto"] == "contra")
+    aprobada = f > k
+    res = {"aprobada": aprobada, "favor": f, "contra": k, "abstencion": len(votos) - f - k,
+           "texto": f"{'Aprobada' if aprobada else 'Rechazada'} ({f} a favor, {k} en contra, {len(votos) - f - k} abstenciones)"}
+    with bd.db() as c:
+        if aprobada and tipo == "limite":
+            c.execute("UPDATE sesiones SET limite_palabras=? WHERE id=?", (n, sid))
+        if aprobada and tipo == "siguiente":
+            puntos = json.loads(s["orden_dia"] or "null") or [s["asunto"]]
+            c.execute("UPDATE sesiones SET punto=?, oradores='[]' WHERE id=?", (min(len(puntos) - 1, (s["punto"] or 0) + 1), sid))
+        if aprobada and tipo == "cuarto":
+            c.execute("UPDATE sesiones SET receso=1 WHERE id=?", (sid,))
+        c.execute("INSERT INTO mociones(sesion_id,punto,tipo,detalle,votos,resultado,ts) VALUES(?,?,?,?,?,?,?)",
+                  (sid, s["punto"] or 0, tipo, texto, json.dumps(votos, ensure_ascii=False), json.dumps(res, ensure_ascii=False), time.time()))
+        return jsonify(mocion=texto, resultado=res, votos=votos, sesion=sesion_dict(c, _sesion(c, sid)))

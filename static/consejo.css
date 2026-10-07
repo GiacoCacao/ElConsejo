@@ -274,6 +274,9 @@ h3{font:400 22px/1.1 var(--serif);margin:0;color:var(--marfil)}
 .pestanas button{border:1px solid var(--linea);border-radius:40px;padding:6px 14px 6px 6px;font-size:12.5px;color:var(--perla);transition:all .25s}
 .pestanas button .mini{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--linea-fuerte);font:500 12px var(--serif);color:var(--oro-claro)}
 .pestanas button em{font-style:normal;color:var(--humo);font-size:11px}
+.pestanas button.especial .mini .ico{width:13px;height:13px;color:var(--oro)}
+.pestanas .sep-tabs{width:1px;background:var(--linea);margin:4px 6px}
+.fuentes div.f em{font-style:normal;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--oro)}
 .pestanas button.act{border-color:var(--oro);color:var(--marfil);background:rgba(201,169,110,.07)}
 #poolsCuerpo{overflow:auto;max-height:52vh;padding-right:4px}
 .zona{border:1px dashed var(--linea-fuerte);border-radius:2px;padding:26px;text-align:center;margin-bottom:16px;transition:all .3s;background:rgba(201,169,110,.02)}
@@ -351,7 +354,9 @@ h3.sub .grow{flex:1}
 .sesionbar.vacia{border-style:dashed}
 .s-vacia{font:italic 15px var(--serif);color:var(--humo);overflow:hidden;text-overflow:ellipsis}
 .s-num{font-size:9.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--oro);flex:none}
-.s-asunto{order:10;flex-basis:100%;white-space:normal;font:500 17px/1.3 var(--serif);color:var(--marfil);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sesionbar .salto{flex-basis:100%;height:0}
+.acciones-s{display:flex;align-items:center;gap:4px;flex:none;margin-left:auto}
+.s-asunto{flex:1;min-width:180px;white-space:normal;font:500 17px/1.3 var(--serif);color:var(--marfil);overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .s-chip{white-space:nowrap;font-style:normal;font-size:9px;letter-spacing:.18em;text-transform:uppercase;padding:3px 7px;border:1px solid var(--linea);border-radius:2px;color:var(--perla);flex:none}
 .s-chip.vivo{color:var(--oro-claro);border-color:var(--linea-fuerte);animation:latir 1.8s infinite}
 .s-chip.ok{color:var(--verde);border-color:rgba(143,181,154,.4)}
@@ -579,6 +584,68 @@ body.observador .oradores{display:none!important}
 .modelos code{font-size:11px;background:rgba(255,255,255,.04);border:1px solid var(--linea);border-radius:2px;padding:2px 6px;color:var(--perla)}
 .ok-ins{color:var(--verde);font-size:12.5px}.aviso-ins{color:var(--rojo);font-size:12.5px}
 
+/* ---- herramientas parlamentarias ---- */
+.s-punto{font:500 10px var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--oro);margin-right:6px;vertical-align:2px}
+.s-chip.reloj{color:var(--humo)}
+.sesionbar.receso{border-color:rgba(224,178,107,.55);background:linear-gradient(180deg,rgba(40,32,18,.9),rgba(20,16,10,.92))}
+.icono.peq-i{width:28px;height:28px}
+.nav-punto{display:inline-flex;gap:4px;margin-right:10px;vertical-align:-6px}
+.nav-punto .icono{width:24px;height:24px}
+.icono:disabled{opacity:.3}
+.crono{display:flex;align-items:center;gap:10px;margin:-6px 0 14px;padding:7px 10px;border:1px solid var(--linea);border-radius:2px;background:rgba(201,169,110,.04)}
+.crono .rot{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--humo)}
+.crono .medidor{width:120px}
+.crono b{font:500 12px var(--sans);color:var(--perla);font-variant-numeric:tabular-nums}
+.crono em{font-style:normal;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--rojo)}
+.crono.pasado{border-color:rgba(194,113,102,.6)}
+.crono.pasado .medidor i{background:linear-gradient(90deg,#b0703c,var(--rojo))}
+.orador.orden{border-color:rgba(224,178,107,.7);background:rgba(224,178,107,.08)}
+.orador.orden .q em{color:#e0b26b;font-style:normal;font-family:var(--sans);font-size:11px}
+.desplegable{position:relative}
+.menu-mini{position:absolute;right:0;top:calc(100% + 6px);z-index:9;min-width:300px;background:#12141b;border:1px solid var(--linea-fuerte);border-radius:2px;padding:6px;box-shadow:0 20px 50px -20px #000}
+.menu-mini button{display:block;width:100%;text-align:left;padding:9px 10px;font-size:12.5px;color:var(--perla);border-radius:2px}
+.menu-mini button:hover{background:rgba(201,169,110,.08);color:var(--marfil)}
+.menu-mini small{display:block;font-size:11px;color:var(--humo)}
+
+.membrete-aj{display:grid;grid-template-columns:120px 1fr;gap:22px;align-items:start}
+.membrete-aj .rejilla3{grid-template-columns:1fr 1fr 1fr}
+.membrete-aj>.fld{grid-column:2}
+.logo-prev{display:flex;flex-direction:column;align-items:center;gap:6px;border:1px solid var(--linea);border-radius:2px;padding:12px;background:#f3ecdd}
+.logo-prev img{width:72px;height:72px;object-fit:contain}
+.logo-prev .enlace{color:#5a4a2c}
+.logo-prev label{cursor:pointer}
+
+/* ---- estadísticas ---- */
+.modal.estad{width:min(1120px,96vw)}
+.modal.estad{position:fixed}
+.filtros-est{display:flex;align-items:center;gap:16px;margin:-4px 0 18px}
+.filtros-est select{background:#0f1218;color:var(--marfil);border:1px solid var(--linea);border-radius:2px;padding:8px 10px;font:400 13px var(--sans)}
+#estCuerpo{max-height:68vh;overflow:auto;padding-right:4px}
+.tiles.est{grid-template-columns:repeat(4,1fr);margin-bottom:10px}
+.tile.est .cifra-sans{font:600 26px/1.15 var(--sans);color:var(--marfil);margin:8px 0 4px;letter-spacing:-.01em}
+.est-nota{margin:0 0 18px}
+.rejilla-est{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.carta{border:1px solid var(--linea);border-radius:3px;padding:16px 18px;background:rgba(255,255,255,.012)}
+.carta:first-child{grid-column:1/-1}
+.carta header{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.carta header div{flex:1}
+.carta h4{margin:0;font:500 13px var(--sans);color:var(--marfil)}
+.carta header p{margin:3px 0 0;font-size:11.5px;color:var(--humo)}
+.columnas{width:100%;height:auto;display:block}
+.columnas .rej{stroke:rgba(255,255,255,.07);stroke-width:1}
+.columnas .eje{fill:var(--humo);font:400 10px var(--sans)}
+.columnas .valor{fill:var(--perla);font:500 10.5px var(--sans)}
+.barras{display:flex;flex-direction:column;gap:9px}
+.fila-b{display:grid;grid-template-columns:minmax(120px,38%) 1fr 74px;gap:12px;align-items:center}
+.fila-b .et{font-size:12.5px;color:var(--perla);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fila-b .et small{display:block;font-size:10.5px;color:var(--ceniza);overflow:hidden;text-overflow:ellipsis}
+.fila-b .pista{height:12px;position:relative}
+.fila-b .pista i{position:absolute;inset:0 auto 0 0;border-radius:0 4px 4px 0}
+.fila-b b{font:500 12px var(--sans);color:var(--marfil);font-variant-numeric:tabular-nums;text-align:right}
+.fila-b:hover .et{color:var(--marfil)}
+.vacio-g{padding:20px 0;text-align:center}
+.est-tip{position:absolute;z-index:5;pointer-events:none;background:#1b1e27;border:1px solid var(--linea-fuerte);border-radius:2px;padding:6px 10px;font-size:12px;color:var(--marfil);box-shadow:0 10px 30px -10px #000;max-width:240px}
+
 /* ---- avisos ---- */
 #avisos{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .aviso-t{background:#14161d;border:1px solid var(--linea-fuerte);border-left:2px solid var(--oro);padding:11px 18px;font-size:13px;color:var(--marfil);
@@ -607,7 +674,7 @@ body.observador .oradores{display:none!important}
   .agente .n{font-size:9px;letter-spacing:.16em}.agente .r,.agente .pool{display:none}
   .atajo{display:none}
   .consumo{top:10px;padding:6px 12px}.c-svc,.c-tok,.consumo .medidor{display:none}.consumo .c-blq:nth-of-type(2){border-left:0;padding-left:0}
-  .tiles{grid-template-columns:1fr 1fr}.rejilla3{grid-template-columns:1fr}.comites{grid-template-columns:1fr}
+  .tiles{grid-template-columns:1fr 1fr}.rejilla3{grid-template-columns:1fr}.tiles.est{grid-template-columns:1fr 1fr}.rejilla-est{grid-template-columns:1fr}.membrete-aj{grid-template-columns:1fr}.membrete-aj>.fld{grid-column:auto}.comites{grid-template-columns:1fr}
   .sesionbar .peq span,.s-chip{display:none}.orden,.v-modos,.v-motivos{grid-template-columns:1fr}
   .v-cab,.v-cuerpo{padding-left:16px;padding-right:16px}.documento{padding:24px 20px}.v-op{grid-template-columns:32px 1fr 40px}.v-op .barra{display:none}.tabla .opt{display:none}
   .vacio h2{font-size:25px}.vacio p{font-size:12.5px}.vacio .sugerencias{display:none}

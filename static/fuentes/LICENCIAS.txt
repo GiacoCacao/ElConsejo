@@ -1,2 +1,4 @@
 Cormorant Garamond (Christian Thalmann) e Inter (Rasmus Andersson) se distribuyen bajo la
 SIL Open Font License 1.1: https://openfontlicense.org — subconjunto latino descargado de Google Fonts.
+Las TTF de ttf/ son instancias estáticas (pesos 400, 500 y 600) generadas con fontTools a partir de
+esas fuentes variables, con nombres internos propios; siguen bajo la misma licencia OFL.

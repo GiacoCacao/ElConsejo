@@ -10,6 +10,7 @@ async function refrescarSesion() {
   const est = await api(`/api/paneles/${panel.id}/sesion`).catch(() => null);
   if (!est) return;
   sesion = est.sesion; votaciones = est.votaciones;
+  if (typeof fijarOradores === 'function') fijarOradores((sesion && sesion.oradores) || []);
   pintarSesionBar(); pintarArco(); pintarRegistro();
   if (typeof pintarOradores === 'function') pintarOradores();
 }
@@ -31,21 +32,51 @@ function pintarSesionBar() {
   }
   const comp = sesion.composicion;
   const n = sesion.anexos.length;
-  b.className = 'sesionbar';
+  const puntos = sesion.orden_dia || [], np = puntos.length, p = sesion.punto || 0;
+  b.className = 'sesionbar' + (sesion.receso ? ' receso' : '');
+  // fila 1: identidad e indicadores · fila 2: punto o asunto y acciones
   b.innerHTML = `<span class="s-num">Sesión nº ${sesion.numero}</span>
-    <span class="s-asunto" title="${esc(sesion.asunto)}">${esc(sesion.asunto)}</span>
+    ${comp ? `<em class="s-chip" title="${esc(comp.comites.map(c => c.nombre).join('\n'))}${sesion.limite_palabras ? '\nTiempo de palabra: ' + sesion.limite_palabras + ' palabras' : ''}">${comp.comites.length} comités · ${comp.delegados.length} delegados${sesion.limite_palabras ? ` · ${sesion.limite_palabras} pal.` : ''}</em>` : ''}
+    <em class="s-chip reloj" title="Duración de la sesión"><span id="sbReloj">${duracion(sesion.abierta)}</span></em>
+    ${sesion.receso ? '<em class="s-chip vivo">Cuarto intermedio</em>' : ''}
     ${sesion.estado === 'votacion' ? '<em class="s-chip vivo">En votación</em>' : ''}
     ${sesion.acuerdo ? '<em class="s-chip ok" title="Hay un acuerdo aprobado en esta sesión">Acuerdo adoptado</em>' : ''}
-    ${comp ? `<em class="s-chip" title="${esc(comp.comites.map(c => c.nombre).join('\n'))}${sesion.limite_palabras ? '\nTiempo de palabra: ' + sesion.limite_palabras + ' palabras' : ''}">${comp.comites.length} comités · ${comp.delegados.length} delegados${sesion.limite_palabras ? ` · ${sesion.limite_palabras} pal.` : ''}</em>` : ''}
     ${n ? `<em class="s-chip" title="${esc(sesion.anexos.map(a => `Acta nº ${a.numero} · ${a.panel}`).join('\n'))}">${n} acta${n > 1 ? 's' : ''} anexa${n > 1 ? 's' : ''}</em>` : ''}
-    <span class="grow"></span>
-    <button type="button" class="enlace peq" id="sbOrden" title="Asunto, orden del debate y actas anexas">${ico('indice')}<span>Orden</span></button>
-    <button type="button" class="enlace peq" id="sbDeliberar" title="Llegar a un acuerdo por consenso o por mayoría simple">${ico('balanza')}<span>${comp ? 'Acuerdo' : 'Deliberar acuerdo'}</span></button>
-    <button type="button" class="contorno peq" id="sbCerrar" title="Levantar el acta y concluir el asunto">${ico('sello')}<span>${comp ? 'Acta' : 'Acta de cierre'}</span></button>`;
+    <span class="salto"></span>
+    <span class="s-asunto" title="${esc(sesion.asunto)}">${np > 1 ? `<span class="nav-punto"><button type="button" class="icono peq-i" id="sbPrev" title="Punto anterior" ${p ? '' : 'disabled'}>${ico('izq')}</button><button type="button" class="icono peq-i" id="sbNext" title="Pasar al siguiente punto" ${p < np - 1 ? '' : 'disabled'}>${ico('der')}</button></span><span class="s-punto">Punto ${p + 1} de ${np}</span> ${esc(puntos[p])}` : esc(sesion.asunto)}</span>
+    <span class="acciones-s">
+      ${sesion.receso ? `<button type="button" class="contorno peq" id="sbReanudar">${ico('flecha')}<span>Reanudar</span></button>`
+        : comp ? `<button type="button" class="icono peq-i" id="sbReceso" title="Cuarto intermedio: suspender brevemente la sesión">${ico('sesiones')}</button>` : ''}
+      <button type="button" class="icono peq-i" id="sbOrden" title="Asunto, orden del día, orden del debate y actas anexas">${ico('indice')}</button>
+      <button type="button" class="enlace peq" id="sbDeliberar" title="Llegar a un acuerdo por consenso o por mayoría simple">${ico('balanza')}<span>Acuerdo</span></button>
+      <button type="button" class="contorno peq" id="sbCerrar" title="Levantar el acta y concluir el asunto">${ico('sello')}<span>Acta de cierre</span></button>
+    </span>`;
   $('#sbOrden').onclick = () => abrirDlgSesion(sesion);
+  const cambiarPunto = async n => {
+    try { sesion = await api(`/api/sesiones/${sesion.id}/punto`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ punto: n }) });
+      qActual = null; estado = {}; sel = null; if (typeof fijarOradores === 'function') fijarOradores([]);
+      avisar(`Punto ${n + 1}: ${sesion.orden_dia[n]}`); pintarSesionBar(); pintarArco(); pintarMesa(); if (typeof pintarOradores === 'function') pintarOradores(); }
+    catch (e) { avisar(e.message, true); }
+  };
+  const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
+  on('sbPrev', () => cambiarPunto(p - 1));
+  on('sbNext', () => cambiarPunto(p + 1));
+  const receso = async activo => {
+    try { sesion = await api(`/api/sesiones/${sesion.id}/receso`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ activo }) });
+      avisar(activo ? 'Cuarto intermedio: la sesión queda suspendida.' : 'Se reanuda la sesión.'); pintarSesionBar(); }
+    catch (e) { avisar(e.message, true); }
+  };
+  on('sbReceso', () => receso(true));
+  on('sbReanudar', () => receso(false));
   $('#sbDeliberar').onclick = abrirVotacion;
   $('#sbCerrar').onclick = cerrarSesion;
 }
+
+function duracion(desde) {
+  const min = Math.max(0, Math.floor((Date.now() / 1000 - desde) / 60));
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')}`;
+}
+setInterval(() => { const r = $('#sbReloj'); if (r && sesion) r.textContent = duracion(sesion.abierta); }, 30000);
 
 // ---- convocatoria: iniciar o editar sesión ----
 let sesEdit = null, sesModo = 'orden', sesOrden = [];
@@ -57,6 +88,7 @@ async function abrirDlgSesion(s) {
   $('#sesTitulo').textContent = s ? 'Orden de la sesión' : 'Iniciar sesión';
   $('#sesGuardar .etq').textContent = s ? 'Guardar' : 'Abrir sesión';
   f.asunto.value = s ? s.asunto : ($('#texto').value.trim().slice(0, 200) || '');
+  f.orden_dia.value = s && s.orden_dia && s.orden_dia.length > 1 ? s.orden_dia.join('\n') : '';
   sesModo = s ? s.modo_debate : 'orden';
   sesOrden = s ? [...s.orden] : panel.agentes.map(a => a.id);
   pintarModo(); pintarOrden();
@@ -101,7 +133,8 @@ $('#sesHemiciclo').onclick = () => { sesOrden = panel.agentes.map(a => a.id); pi
 $('#sesAzar').onclick = () => { for (let i = sesOrden.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [sesOrden[i], sesOrden[j]] = [sesOrden[j], sesOrden[i]]; } pintarOrden(); };
 $('#formSesion').onsubmit = async e => {
   e.preventDefault();
-  const cuerpo = { asunto: e.target.asunto.value.trim(), modo_debate: sesModo, orden: sesOrden,
+  const lineas = e.target.orden_dia.value.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean);
+  const cuerpo = { asunto: e.target.asunto.value.trim(), modo_debate: sesModo, orden: sesOrden, orden_dia: lineas,
     anexos: [...$('#sesAnexos').querySelectorAll('input:checked')].map(i => +i.value) };
   const h = { 'Content-Type': 'application/json' };
   try {
@@ -293,6 +326,8 @@ function mostrarActa(s, acta) {
   $('#actaDoc').innerHTML = acta ? mdDoc(acta) : '<p class="ayuda">Esta sesión no tiene acta de cierre.</p>';
   $('#actaBar').hidden = !acta;
   $('#actaDescargar').href = `/api/sesiones/${s.id}/acta.md`;
+  $('#actaPdf').href = `/api/sesiones/${s.id}/acta.pdf`;
+  $('#actaWord').href = `/api/sesiones/${s.id}/acta.docx`;
   $('#actaDestino').innerHTML = paneles.map(p => `<option value="${p.id}" ${p.id === s.panel_id ? 'disabled' : ''}>${esc(p.nombre)}</option>`).join('');
   const primero = paneles.find(p => p.id !== s.panel_id); if (primero) $('#actaDestino').value = primero.id;
 }

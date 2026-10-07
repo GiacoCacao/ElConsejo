@@ -38,6 +38,7 @@
     <button id="historial" class="enlace" data-i="actas" title="Transcripción de la sesión en curso">Transcripción</button>
     <button id="editar" class="enlace" data-i="ajustes" title="Configurar este panel">Configurar</button>
     <button id="nuevo" class="contorno" data-i="mas">Nuevo panel</button>
+    <button id="abrirEstadisticas" class="icono" data-i="grafico" title="Estadísticas del Consejo" aria-label="Estadísticas"></button>
     <button id="abrirAjustes" class="icono" data-i="deslizadores" title="Ajustes: acceso, tope de gasto y copias de seguridad" aria-label="Ajustes"></button>
   </div>
 </header>
@@ -101,7 +102,7 @@
     <span class="grow"></span>
     <button id="cerrarPools" class="icono" data-i="x" aria-label="Cerrar"></button>
   </div>
-  <p class="nota" id="notaPools">Cada experto consulta únicamente su propia biblioteca. Los documentos se procesan en la fábrica,
+  <p class="nota" id="notaPools">Cada experto consulta su biblioteca propia, la común de su consejo y la general de todos los consejos. Los documentos se procesan en la fábrica,
     se dividen en capítulos, se simplifican, se ordenan y se indexan; al deliberar, el experto recurre a los capítulos pertinentes y los cita.</p>
   <div id="poolsTabs" class="pestanas"></div>
   <div id="poolsCuerpo"></div>
@@ -152,6 +153,8 @@
       <div class="segmentos grande" id="sesModo"><button type="button" data-m="orden">Por turnos, en orden</button><button type="button" data-m="simultaneo">Simultáneo</button></div>
       <small id="sesModoAyuda" class="ayuda"></small>
     </div>
+    <label class="fld">Orden del día <small>— opcional: un punto por línea; si lo deja vacío, el asunto es el único punto</small>
+      <textarea name="orden_dia" rows="3" placeholder="1. Viabilidad jurídica&#10;2. Financiación"></textarea></label>
     <div class="seccion"><h3>Orden del debate</h3><span class="grow"></span>
       <button type="button" class="enlace" id="sesHemiciclo">Como el hemiciclo</button><button type="button" class="enlace" id="sesAzar">Al azar</button></div>
     <ol id="sesOrden" class="orden"></ol>
@@ -184,7 +187,9 @@
   </div>
   <div class="actabar" id="actaBar">
     <button type="button" class="enlace" id="actaImprimir" data-i="imprimir">Imprimir</button>
-    <a class="enlace" id="actaDescargar" data-i="descargar" href="#">Descargar</a>
+    <a class="enlace" id="actaPdf" data-i="doc" href="#" target="_blank" rel="noopener">PDF con membrete</a>
+    <a class="enlace" id="actaWord" data-i="descargar" href="#">Word</a>
+    <a class="enlace" id="actaDescargar" data-i="descargar" href="#" title="Texto plano (Markdown)">.md</a>
     <span class="grow"></span>
     <label class="traslado">Llevar a otro consejo<select id="actaDestino"></select></label>
     <button type="button" class="contorno" id="actaTrasladar" data-i="enviar">Deliberar / anexar</button>
@@ -243,6 +248,8 @@
         <div class="segmentos grande" id="asaModo"><button type="button" data-m="orden">Por turnos</button><button type="button" data-m="simultaneo">Simultánea</button></div></div>
       <div class="fld">Delegados <b id="asaCuenta" class="cuenta">0 de 16</b></div>
     </div>
+    <label class="fld">Orden del día <small>— opcional: un punto por línea</small>
+      <textarea name="orden_dia" rows="2" placeholder="1. Marco legal&#10;2. Impacto en costes"></textarea></label>
     <div class="seccion"><h3>Comités convocados</h3><small class="ayuda" style="margin-left:12px">Marque los comités y elija sus delegados; por defecto, un portavoz</small></div>
     <div id="asaComites" class="comites"></div>
     <div class="seccion"><h3>Actas anexas</h3></div>
@@ -251,6 +258,20 @@
       <button type="button" class="enlace" data-cierra="dlgAsamblea">Cancelar</button>
       <button type="submit" class="dorado"><span class="etq">Convocar la Asamblea</span></button></div>
   </form>
+</dialog>
+
+<dialog id="dlgEstadisticas" class="modal ancho estad">
+  <div class="cab">
+    <div><div class="sobre">Actividad y resultados</div><h2>Estadísticas del Consejo</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" data-cierra="dlgEstadisticas" aria-label="Cerrar"></button>
+  </div>
+  <div class="filtros-est">
+    <div class="segmentos grande" id="estPeriodo"><button type="button" data-d="30">30 días</button><button type="button" data-d="90">90 días</button><button type="button" data-d="365">12 meses</button><button type="button" data-d="0">Todo</button></div>
+    <select id="estPanel"><option value="">Todos los consejos</option></select>
+  </div>
+  <div id="estCuerpo"></div>
+  <div id="estTip" class="est-tip" hidden></div>
 </dialog>
 
 <dialog id="confirmar" class="modal estrecho">
@@ -268,5 +289,6 @@
 <script src="/static/ajustes.js"></script>
 <script src="/static/consultor.js"></script>
 <script src="/static/asamblea.js"></script>
+<script src="/static/estadisticas.js"></script>
 </body>
 </html>

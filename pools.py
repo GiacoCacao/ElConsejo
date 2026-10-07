@@ -233,19 +233,39 @@ def _plano(s):
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
-def conocimiento(agente_id, pregunta, k=3, tope=5000):
-    """→ (texto para el prompt, fuentes). Vacío si el agente no tiene pool o nada encaja."""
+GENERAL = "general"
+
+
+def clave_consejo(panel_id):
+    return f"consejo:{panel_id}"
+
+
+def biblioteca_de(clave):
+    """Etiqueta de la biblioteca a la que pertenece un documento."""
+    if clave == GENERAL:
+        return "Biblioteca general"
+    if (clave or "").startswith("consejo:"):
+        return "Biblioteca común"
+    return "Biblioteca propia"
+
+
+def conocimiento(claves, pregunta, k=3, tope=5000):
+    """Busca en varias bibliotecas a la vez: la del experto, la común de su consejo y la general.
+    → (texto para el prompt, fuentes). Vacío si no hay documentos o nada encaja."""
+    if isinstance(claves, str):
+        claves = [claves]
+    marcas = ",".join("?" * len(claves))
     with bd.db() as c:
-        docs = c.execute("SELECT id, nombre, fabrica_id FROM docs WHERE agente_id=? AND ambito='pool' "
-                         "AND estado IN ('listo','resumiendo')", (agente_id,)).fetchall()
+        docs = c.execute(f"SELECT id, nombre, fabrica_id FROM docs WHERE agente_id IN ({marcas}) AND ambito='pool' "
+                         "AND estado IN ('listo','resumiendo')", claves).fetchall()
         if not docs:
             return "", []
         puntos, pasaje = {}, {}
         q = _consulta_fts(pregunta)
         if q:
             for rango, r in enumerate(c.execute(
-                    "SELECT cap_id FROM capfts WHERE capfts MATCH ? AND agente_id=? ORDER BY bm25(capfts,5.0,2.0,1.0) LIMIT 6",
-                    (q, agente_id))):
+                    f"SELECT cap_id FROM capfts WHERE capfts MATCH ? AND agente_id IN ({marcas}) "
+                    "ORDER BY bm25(capfts,5.0,2.0,1.0) LIMIT 6", (q, *claves))):
                 puntos[r["cap_id"]] = puntos.get(r["cap_id"], 0) + 1 / (60 + rango)
         por_fabrica = {d["fabrica_id"]: d["id"] for d in docs if d["fabrica_id"]}
         if por_fabrica and fabrica.configurada():
@@ -267,12 +287,13 @@ def conocimiento(agente_id, pregunta, k=3, tope=5000):
         mejores = sorted(puntos, key=puntos.get, reverse=True)[:k]
         bloques, fuentes = [], []
         for cid in mejores:
-            cap = c.execute("SELECT c.*, d.nombre AS doc FROM capitulos c JOIN docs d ON d.id=c.doc_id WHERE c.id=?",
-                            (cid,)).fetchone()
+            cap = c.execute("SELECT c.*, d.nombre AS doc, d.agente_id AS dueno FROM capitulos c "
+                            "JOIN docs d ON d.id=c.doc_id WHERE c.id=?", (cid,)).fetchone()
             extracto = (pasaje.get(cid) or cap["texto"])[:1100].strip()
-            bloques.append(f"### {cap['doc']} · cap. {cap['orden']}: {cap['titulo']}\n"
+            bib = biblioteca_de(cap["dueno"])
+            bloques.append(f"### {cap['doc']} ({bib.lower()}) · cap. {cap['orden']}: {cap['titulo']}\n"
                            f"Resumen: {cap['resumen']}\nPasaje: {extracto}")
-            fuentes.append({"doc": cap["doc"], "capitulo": cap["orden"], "titulo": cap["titulo"]})
+            fuentes.append({"doc": cap["doc"], "capitulo": cap["orden"], "titulo": cap["titulo"], "biblioteca": bib})
     return "\n\n".join(bloques)[:tope], fuentes
 
 

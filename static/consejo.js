@@ -28,6 +28,7 @@ const ICONOS = {
   enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
   lupa: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5M8.5 10.5h4M10.5 8.5v4"/>',
   persona: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
+  grafico: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
   deslizadores: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   salir: '<path d="M14 4.5h5.5v15H14M10 8l-4 4 4 4M6 12h10"/>',
   arriba: '<path d="M6 15l6-6 6 6"/>', abajo: '<path d="M6 9l6 6 6-6"/>',
@@ -125,7 +126,7 @@ async function cargar(id) {
   destinoInd = null; pintarDestino();
   $('#editar').hidden = !!panel && panel.tipo === 'asamblea';
   document.body.classList.toggle('en-asamblea', !!panel && panel.tipo === 'asamblea');
-  if (typeof oradores !== 'undefined') oradores.length = 0;
+  if (typeof fijarOradores === 'function') fijarOradores((sesion && sesion.oradores) || []);
   pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro(); cargarConsumo(); pintarSesionBar();
   if (typeof pintarOradores === 'function') pintarOradores();
 }
@@ -239,6 +240,15 @@ function mover(paso) {
 }
 
 // ---- atril ----
+const retirando = new Set();
+function cronometro(id) {   // tiempo de palabra: palabras dichas frente al límite de la sesión
+  const n = (vivo[id] || '').trim().split(/\s+/).filter(Boolean).length;
+  const lim = sesion && sesion.limite_palabras;
+  const pct = lim ? Math.min(100, 100 * n / lim) : 0, pasado = lim && n > lim;
+  return `<div class="crono ${pasado ? 'pasado' : ''}"><span class="rot">Tiempo de palabra</span>
+    ${lim ? `<span class="medidor"><i style="width:${Math.max(2, pct)}%"></i></span><b>${n} / ${lim}</b>${pasado ? '<em>excedido</em>' : ''}` : `<b>${n} palabras</b>`}
+    <span class="grow"></span><button type="button" class="enlace peq" data-retirar ${retirando.has(id) ? 'disabled' : ''}>${ico('x')}<span>${retirando.has(id) ? 'Retirando…' : 'Retirar la palabra'}</span></button></div>`;
+}
 function gastoAgente(id) {
   const g = consumoDatos && consumoDatos.agentes.find(x => x.id === id);
   if (!g || !g.ultima || !g.ultima.llamadas) return '';
@@ -276,8 +286,9 @@ function pintarMesa() {
     else if (m.ronda > 0) h += `<div class="replica">Réplica ${ROMANO(m.ronda)}</div>`;
     h += md(m.texto);
     if (m.fuentes.length) h += `<div class="fuentes"><div class="rot">Fuentes consultadas</div>` + m.fuentes.map(f =>
-      `<div class="f"><span>${esc(f.doc)}</span><span>Cap. ${f.capitulo} · ${esc(f.titulo)}</span></div>`).join('') + '</div>';
+      `<div class="f"><span>${esc(f.doc)}</span><span>Cap. ${f.capitulo} · ${esc(f.titulo)}${f.biblioteca && f.biblioteca !== 'Biblioteca propia' ? ` · <em>${esc(f.biblioteca)}</em>` : ''}</span></div>`).join('') + '</div>';
   }
+  if (estado[a.id] === 'hablando' && vivo[a.id] !== undefined && !document.body.classList.contains('observador')) h += cronometro(a.id);
   if (estado[a.id] === 'hablando' && vivo[a.id]) {
     if (vivoModo[a.id]) h += `<div class="replica">${vivoModo[a.id] === 'alusion' ? 'Por alusiones' : 'En uso de la palabra'}</div>`;
     else if (suyos.length) h += `<div class="replica">Réplica ${ROMANO((suyos[suyos.length - 1].ronda || 0) + 1)}</div>`;
@@ -290,6 +301,11 @@ function pintarMesa() {
   if (estado[a.id] === 'hablando' && abajo) r.scrollTop = r.scrollHeight;
   r.querySelectorAll('[data-mv]').forEach(b => b.onclick = () => mover(+b.dataset.mv));
   const bi = r.querySelector('[data-ind]'); if (bi) bi.onclick = () => consultaIndividual(a.id);
+  const br = r.querySelector('[data-retirar]');
+  if (br) br.onclick = async () => {
+    br.disabled = true; br.querySelector('span').textContent = 'Retirando…'; retirando.add(a.id);
+    await api(`/api/preguntas/${qActual}/agentes/${a.id}/retirar`, { method: 'POST' }).catch(e => avisar(e.message, true));
+  };
   const bp = r.querySelector('[data-palabra]'); if (bp) bp.onclick = () => concederPalabra(a.id, 'palabra');
   if (suyos.some(m => m.error)) r.classList.add('error');
 }
@@ -369,13 +385,16 @@ async function intervenir(qid, id, { ronda = 0, modo = null, por = null, vigente
       if (sel === id) repintarMesa();
     });
     m = fin.m; alus = fin.alusiones || [];
+    if (fin.oradores && typeof fijarOradores === 'function') { fijarOradores(fin.oradores); alus = []; }
+    if (fin.retirada) avisar(`La presidencia retiró la palabra a ${(panel.agentes.find(x => x.id === id) || {}).nombre || 'el orador'}.`);
   } catch (err) { m = { rol: 'agent', agente_id: id, pregunta_id: qid, ronda, modo, texto: err.message, error: true, imagenes: [], adjuntos: [], fuentes: [], ts: Date.now() / 1000 }; }
-  delete vivo[id]; delete vivoModo[id];
+  delete vivo[id]; delete vivoModo[id]; retirando.delete(id);
   if (!vigente()) return null;
   msgs.push(m); estado[id] = m.error ? 'error' : 'listo';
   if (!sel) sel = id;
   pintarArco(); pintarMesa(); pintarRegistro(); pedirConsumo();
   if (alus.length && typeof anotarAlusiones === 'function') anotarAlusiones(id, alus);
+  if (typeof pintarOradores === 'function') pintarOradores();
   return m;
 }
 
@@ -397,6 +416,7 @@ $('#chat').onsubmit = async e => {
   e.preventDefault();
   if (!panel || $('#enviar').disabled) return;
   if (!panel.agentes.length) return avisar('Este panel no tiene expertos todavía.', true);
+  if (sesion && sesion.receso) return avisar('La sesión está en cuarto intermedio. Reanúdela para continuar.', true);
   const fd = new FormData(); fd.append('texto', $('#texto').value);
   adjuntos.forEach(f => fd.append('imagenes', f));
   const individual = destinoInd;
@@ -544,7 +564,7 @@ let poolAg = null, poolDatos = {}, poolTimer = null, abiertos = new Set();
 const VIVO = e => !['listo', 'error'].includes(e);
 async function abrirPools() {
   if (!panel) return;
-  poolAg = panel.agentes.some(a => a.id === poolAg) ? poolAg : (sel || (panel.agentes[0] || {}).id);
+  poolAg = ['_consejo', '_general'].includes(poolAg) || panel.agentes.some(a => a.id === poolAg) ? poolAg : (sel || '_consejo');
   $('#pools').showModal();
   const s = await api('/salud').catch(() => ({}));
   if (!s.fabrica_configurada) { $('#notaPools').classList.add('aviso'); $('#notaPools').textContent = 'Falta CONSEJO_FABRICA_URL en el .env: sin la fábrica no se pueden procesar documentos.'; }
@@ -560,15 +580,28 @@ async function cargarPools() {
 }
 function pintarPools() {
   const tabs = $('#poolsTabs'); tabs.innerHTML = '';
+  const especiales = [{ id: '_consejo', nombre: 'Común del consejo', ico: 'libros' }, { id: '_general', nombre: 'General', ico: 'sesiones' }];
+  for (const e of especiales) {
+    const b = document.createElement('button'); b.className = 'especial' + (e.id === poolAg ? ' act' : '');
+    b.innerHTML = `<span class="mini">${ico(e.ico)}</span>${e.nombre} <em>${(poolDatos[e.id] || []).length}</em>`;
+    b.title = e.id === '_consejo' ? 'La consultan todos los expertos de este consejo' : 'La consultan todos los expertos de todos los consejos';
+    b.onclick = () => { poolAg = e.id; pintarPools(); }; tabs.append(b);
+  }
+  tabs.insertAdjacentHTML('beforeend', '<span class="sep-tabs"></span>');
   for (const a of panel.agentes) {
     const b = document.createElement('button'); b.className = a.id === poolAg ? 'act' : '';
     b.innerHTML = `<span class="mini">${esc(monograma(a))}</span>${esc(a.nombre)} <em>${(poolDatos[a.id] || []).length}</em>`;
     b.onclick = () => { poolAg = a.id; pintarPools(); }; tabs.append(b);
   }
-  const cuerpo = $('#poolsCuerpo'), a = panel.agentes.find(x => x.id === poolAg);
+  const cuerpo = $('#poolsCuerpo');
+  const a = poolAg === '_consejo' ? { id: '_consejo', nombre: panel.nombre, comun: true }
+    : poolAg === '_general' ? { id: '_general', nombre: 'todos los consejos', general: true } : panel.agentes.find(x => x.id === poolAg);
   if (!a) { cuerpo.innerHTML = '<p class="nota">Este panel aún no tiene expertos.</p>'; return; }
-  cuerpo.innerHTML = `<div class="zona" id="zona"><div class="t1">Biblioteca de ${esc(a.nombre)}</div>
-    <div class="t2">Arrastre aquí documentos PDF, DOCX, TXT, MD, ODT o RTF — solo los consultará este experto</div>
+  const titulo = a.comun ? `Biblioteca común · ${esc(a.nombre)}` : a.general ? 'Biblioteca general' : `Biblioteca de ${esc(a.nombre)}`;
+  const quien = a.comun ? 'la consultarán todos los expertos de este consejo' : a.general ? 'la consultarán todos los expertos de todos los consejos'
+    : 'solo los consultará este experto';
+  cuerpo.innerHTML = `<div class="zona" id="zona"><div class="t1">${titulo}</div>
+    <div class="t2">Arrastre aquí documentos PDF, DOCX, TXT, MD, ODT o RTF — ${quien}</div>
     <button id="subirPool" type="button" class="contorno">${ico('mas')}<span>Añadir documentos</span></button>
     <input id="filePool" type="file" multiple hidden accept=".pdf,.docx,.txt,.md,.odt,.rtf"></div><div id="listaDocs"></div>`;
   const zona = $('#zona');

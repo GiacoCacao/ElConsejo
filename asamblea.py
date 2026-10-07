@@ -75,7 +75,7 @@ def convocar():
         a.guardar_panel(c, aid, {"nombre": fila["nombre"], "descripcion": fila["descripcion"], "contexto": fila["contexto"],
                                  "agentes": delegados}, tope=MAX_DELEGADOS)
         sid = sesiones.abrir(c, aid, d.get("asunto"), d.get("modo_debate", "orden"), [x["id"] for x in delegados],
-                             d.get("anexos"))
+                             d.get("anexos"), d.get("orden_dia"))
         try:
             limite = max(40, min(400, int(d.get("limite_palabras") or 0))) if d.get("limite_palabras") else None
         except (TypeError, ValueError):

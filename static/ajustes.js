@@ -92,6 +92,21 @@ function pintarAjustes(d) {
         : `<p class="nota aviso" style="margin:0">El acceso está abierto a toda la red. Para protegerlo, defina CONSEJO_CLAVE_PRESIDENCIA en el .env del despliegue y reinicie.</p>`}
     </section>
     <section class="aj">
+      <h3 class="sub">Membrete de las actas <small class="nota peq" style="margin:0">PDF y Word del acta de cierre</small></h3>
+      <div class="membrete-aj">
+        <div class="logo-prev">${d.membrete.logo ? `<img src="/api/ajustes/membrete/logo?t=${Date.now()}" alt="Logotipo">` : '<img src="/static/sello.png" alt="Sello de El Consejo">'}
+          ${presi ? `<label class="enlace peq">${ico('mas')}<span>${d.membrete.logo ? 'Cambiar' : 'Subir logotipo'}</span><input type="file" id="ajLogo" accept="image/png,image/jpeg" hidden></label>
+          ${d.membrete.logo ? `<button type="button" class="enlace peq" id="ajQuitarLogo">Usar el sello</button>` : ''}` : ''}</div>
+        <div class="rejilla3">
+          <label class="fld">Institución<input id="mbNombre" value="${esc(d.membrete.nombre)}" ${presi ? '' : 'disabled'}></label>
+          <label class="fld">Lema<input id="mbLema" value="${esc(d.membrete.lema)}" ${presi ? '' : 'disabled'}></label>
+          <label class="fld">Ciudad <small>— «En …, a …»</small><input id="mbCiudad" value="${esc(d.membrete.ciudad)}" ${presi ? '' : 'disabled'}></label>
+        </div>
+        <div class="fld">Papel<div class="segmentos grande" id="mbPapel"><button type="button" data-p="carta">Carta</button><button type="button" data-p="a4">A4</button></div></div>
+      </div>
+      ${presi ? `<button type="button" class="dorado" id="ajGuardarMembrete"><span class="etq">Guardar membrete</span></button>` : ''}
+    </section>
+    <section class="aj">
       <h3 class="sub">Proveedores de IA <small class="nota peq" style="margin:0">APIs compatibles con OpenAI; se asignan a cada experto en Configurar</small><span class="grow"></span>
         ${presi ? `<button type="button" class="contorno" id="ajNuevoProv">${ico('mas')}<span>Añadir proveedor</span></button>` : ''}</h3>
       <p class="nota peq" style="margin:0 0 10px">IA por defecto: <b>${esc(d.provDefecto.modelo || '—')}</b> en ${esc(d.provDefecto.url || '—')} (del .env).
@@ -127,8 +142,26 @@ function pintarAjustes(d) {
   pintaModo();
   if (presi) $('#ajModo').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { modo = b.dataset.m; pintaModo(); });
   pintarProveedores(d.proveedores, d.plantillas, presi);
+  let papel = d.membrete.papel;
+  const pintaPapel = () => $('#mbPapel').querySelectorAll('[data-p]').forEach(b => b.classList.toggle('act', b.dataset.p === papel));
+  pintaPapel();
+  if (presi) $('#mbPapel').querySelectorAll('[data-p]').forEach(b => b.onclick = () => { papel = b.dataset.p; pintaPapel(); });
+  const logo = $('#ajLogo');
+  if (logo) logo.onchange = async e => {
+    const fd = new FormData(); fd.append('logo', e.target.files[0]);
+    try { await api('/api/ajustes/membrete/logo', { method: 'POST', body: fd }); avisar('Logotipo actualizado.'); pintarAjustes(await datosAjustes()); }
+    catch (err) { avisar(err.message, true); }
+  };
   const on = (id, fn) => { const el = $('#' + id); if (el) el.onclick = fn; };
   on('ajNuevoProv', () => formProveedor(null, d.plantillas));
+  on('ajQuitarLogo', async () => { await api('/api/ajustes/membrete/logo', { method: 'DELETE' }); pintarAjustes(await datosAjustes()); });
+  on('ajGuardarMembrete', async () => {
+    try {
+      await api('/api/ajustes/membrete', { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nombre: $('#mbNombre').value, lema: $('#mbLema').value, ciudad: $('#mbCiudad').value, papel }) });
+      avisar('Membrete guardado: se aplicará a las actas que descargue.'); pintarAjustes(await datosAjustes());
+    } catch (e) { avisar(e.message, true); }
+  });
   on('ajGuardarGasto', async () => {
     try {
       await api('/api/ajustes/gasto', { method: 'PUT', headers: { 'Content-Type': 'application/json' },

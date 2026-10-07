@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS votos(
 CREATE TABLE IF NOT EXISTS ajustes(clave TEXT PRIMARY KEY, valor TEXT);
 CREATE TABLE IF NOT EXISTS proveedores(
   id TEXT PRIMARY KEY, nombre TEXT, url TEXT, modelo TEXT, clave TEXT, ts REAL);
+CREATE TABLE IF NOT EXISTS mociones(
+  id INTEGER PRIMARY KEY AUTOINCREMENT, sesion_id INTEGER, punto INTEGER, tipo TEXT, detalle TEXT,
+  votos TEXT, resultado TEXT, ts REAL);
 CREATE TABLE IF NOT EXISTS semillas(nombre TEXT PRIMARY KEY);   -- paneles de serie ya sembrados
 CREATE INDEX IF NOT EXISTS i_cap_doc ON capitulos(doc_id);
 CREATE INDEX IF NOT EXISTS i_cap_ag ON capitulos(agente_id);
@@ -54,7 +57,13 @@ MIGRACIONES = [("mensajes", "ronda", "INTEGER DEFAULT 0"),
                ("mensajes", "modo", "TEXT"),             # asamblea: «palabra» o «alusion»
                ("paneles", "tipo", "TEXT"),              # «asamblea» para la Asamblea General
                ("sesiones", "composicion", "TEXT"),      # asamblea: delegados y comités de esa sesión
-               ("sesiones", "limite_palabras", "INTEGER")]
+               ("sesiones", "limite_palabras", "INTEGER"),
+               ("sesiones", "oradores", "TEXT"),          # lista de oradores (Asamblea), persistente
+               ("sesiones", "orden_dia", "TEXT"),         # puntos del orden del día
+               ("sesiones", "punto", "INTEGER DEFAULT 0"),  # punto en debate
+               ("sesiones", "receso", "INTEGER DEFAULT 0"),  # cuarto intermedio
+               ("mensajes", "punto", "INTEGER DEFAULT 0"),
+               ("votaciones", "punto", "INTEGER DEFAULT 0")]
 
 
 @contextmanager

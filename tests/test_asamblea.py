@@ -102,7 +102,7 @@ def test_asamblea_con_derecho_de_palabra(cliente, falsos):
     assert app.alusiones(asam, gonzalo["id"], "Comparto lo que dicen los colegas del panel jurídico") == [carmen["id"]]
     # turno de solicitudes de palabra
     SOLICITAN.clear(); SOLICITAN.add("Raquel")
-    piden = cliente.post(f"/api/preguntas/{q['pregunta_id']}/solicitudes").get_json()
+    piden = cliente.post(f"/api/preguntas/{q['pregunta_id']}/solicitudes").get_json()["piden"]
     assert [x["agente_id"] for x in piden] == [raquel["id"]] and "costes" in piden[0]["motivo"]
     SOLICITAN.clear()
     acta = cliente.post(f"/api/sesiones/{s['id']}/cerrar").get_json()["acta"]

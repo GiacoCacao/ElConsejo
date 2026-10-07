@@ -30,6 +30,36 @@ cada delegado decide si tiene algo nuevo que aportar) y concede **réplicas por 
 cuando un orador nombra a otro delegado o a su comité («el comité jurídico», «la delegación financiera»).
 La votación y el acta funcionan como en cualquier consejo; el acta indica a qué comité representa cada delegado.
 
+## Herramientas parlamentarias
+
+- **Orden del día** con varios puntos (al iniciar la sesión o convocar la Asamblea): cada consulta y cada votación
+  pertenecen a un punto; la presidencia pasa de uno a otro y el acta recoge un acuerdo por punto.
+- **Lista de oradores persistente** (sobrevive a recargar la página). Las alusiones y las solicitudes se anotan solas.
+- **Cuestiones de orden**: en el turno de solicitudes un delegado puede plantearla; pasa delante en la lista y su
+  intervención se limita a señalar la infracción del procedimiento.
+- **Mociones de procedimiento** que votan los delegados (mayoría simple): cierre del debate (abre la votación del
+  acuerdo), pasar al siguiente punto, limitar el tiempo de palabra y cuarto intermedio.
+- **Cronómetro de palabra** en vivo (palabras dichas frente al tiempo de palabra) y **retirar la palabra** a mitad
+  de intervención. **Cuarto intermedio**: suspende las consultas hasta reanudar.
+
+## Acta con membrete
+
+El acta de cierre se descarga en **PDF** (ReportLab, con las tipografías de la marca incrustadas) y en **Word**
+(python-docx): sello o logotipo propio, nombre de la institución y lema, cabecera y pie con «Página x de y», lugar y
+fecha, y líneas de firma de la Presidencia y la Secretaría. Nombre, lema, ciudad, papel (carta o A4) y logotipo se
+configuran en Ajustes.
+
+## Bibliotecas
+
+Cada experto consulta tres bibliotecas a la vez: la **propia**, la **común de su consejo** y la **general** de todos
+los consejos (un delegado de la Asamblea, además, la común de su comité). Las fuentes citadas indican de cuál sale cada dato.
+
+## Estadísticas
+
+Sesiones, consultas, acuerdos adoptados y gasto; gasto por día o por mes; sesiones por consejo; resultado de las
+votaciones; expertos con más intervenciones y más disidentes (votos contra el resultado final); gasto por modelo y por
+consejo. Filtros por periodo y consejo, detalle al pasar el ratón y vista de tabla en cada gráfico.
+
 ## Consultas individuales y proveedores de IA
 
 - **Consulta individual**: desde la ficha de un experto, la pregunta va solo a él; los demás no la oyen.
@@ -130,4 +160,5 @@ No incluye autenticación: pensado para una red privada (p. ej. Tailscale).
 - Fondo: *United Nations Headquarters — Security Council chamber, straight-on view*, foto de
   [Jdforrester](https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg),
   licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adaptada: recortada, virada a tonos cálidos y oscurecida.
-- Tipografías Cormorant Garamond e Inter, SIL Open Font License 1.1 (`static/fuentes/LICENCIAS.txt`).
+- Tipografías Cormorant Garamond e Inter, SIL Open Font License 1.1 (`static/fuentes/LICENCIAS.txt`); las versiones
+  TTF estáticas de `static/fuentes/ttf` (para el PDF) se derivan de ellas con fontTools.

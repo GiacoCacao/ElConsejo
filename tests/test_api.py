@@ -61,7 +61,7 @@ def test_pool_por_agente_via_api(cliente, falsos):
     assert cliente.post(f"/api/preguntas/{q}/agentes/{p['agentes'][0]['id']}").get_json()["fuentes"] == []
     # borrar el documento limpia capítulos e índice
     assert cliente.delete(f"/api/docs/{d['id']}").status_code == 204
-    assert cliente.get(f"/api/paneles/{p['id']}/pools").get_json() == {}
+    assert cliente.get(f"/api/paneles/{p['id']}/pools").get_json() == {"_consejo": [], "_general": []}
 
 
 def test_paneles_de_serie_se_siembran_una_vez(cliente):

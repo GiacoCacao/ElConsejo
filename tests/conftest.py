@@ -16,7 +16,9 @@ import ia  # noqa: E402
 
 LLAMAR_REAL = ia.llamar   # la de verdad, antes de que las pruebas la sustituyan
 
-SOLICITAN = set()   # nombres que piden la palabra en el turno de solicitudes
+SOLICITAN = set()
+ORDEN = set()        # nombres que plantean una cuestión de orden
+MOCION_NO = set()    # nombres que votan NO a las mociones   # nombres que piden la palabra en el turno de solicitudes
 VOTOS = {}   # nombre del experto -> lo que «vota» la IA simulada (por defecto, A FAVOR)
 
 MANUAL = "# Manual de huertos urbanos\n\n" + "".join(
@@ -53,7 +55,12 @@ def falsos(monkeypatch):
             return "El Consejo acuerda: abrir la sucursal por fases."
         if "solicitudes de palabra" in ult:
             nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
+            if nombre in ORDEN:
+                return "ORDEN: el debate se desvía del punto"
             return "SÍ: rebatir el dato de costes" if nombre in SOLICITAN else "NO"
+        if "votación de procedimiento" in ult:
+            nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
+            return "NO: aún falta debate" if nombre in MOCION_NO else "SÍ: ordena el debate"
         if "somete a votación" in ult:
             nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
             return f"VOTO: {VOTOS.get(nombre, 'A FAVOR')}\nMOTIVO: Es lo prudente."

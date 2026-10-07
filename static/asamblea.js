@@ -1,48 +1,64 @@
 // El Consejo — Asamblea General: convocatoria de comités, lista de oradores y derecho de palabra.
 const MAX_DELEGADOS = 16;
-const oradores = [];   // {id, tipo: 'alusion'|'pide', por, motivo}
+const oradores = [];   // {id, tipo: 'alusion'|'pide'|'orden', por, motivo} — reflejo de la lista del servidor
 const esAsamblea = () => panel && panel.tipo === 'asamblea';
 const corto = c => (c || '').replace(/^(Panel|Consejo)\s+(de\s+|del\s+)?/i, '');
 
-// ---- lista de oradores ----
-function anotarAlusiones(quien, ids) {
-  if (!esAsamblea()) return;
-  let nuevos = 0;
-  for (const id of ids) {
-    if (id === quien || oradores.some(o => o.id === id)) continue;
-    oradores.push({ id, tipo: 'alusion', por: quien }); nuevos++;
-  }
-  if (nuevos) pintarOradores();
+// ---- lista de oradores (se guarda en el servidor: sobrevive a una recarga) ----
+function fijarOradores(lista) { oradores.splice(0, oradores.length, ...(lista || [])); }
+async function guardarOradores() {
+  if (!sesion) return;
+  try { fijarOradores(await api(`/api/sesiones/${sesion.id}/oradores`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oradores }) })); }
+  catch (e) { avisar(e.message, true); }
 }
+function anotarAlusiones(quien, ids) {   // respaldo si el servidor no devolvió la lista
+  if (!esAsamblea()) return;
+  for (const id of ids) if (id !== quien && !oradores.some(o => o.id === id)) oradores.push({ id, tipo: 'alusion', por: quien });
+  pintarOradores();
+}
+const ETQ_ORADOR = { alusion: o => `por alusiones de ${esc((agenteDe(o.por) || {}).nombre || 'un delegado')}`,
+  pide: o => `pide la palabra${o.motivo ? ': ' + esc(o.motivo) : ''}`, orden: o => `cuestión de orden${o.motivo ? ': ' + esc(o.motivo) : ''}` };
 function pintarOradores() {
   const box = $('#oradores');
   const visible = esAsamblea() && sesion && qActual && !document.body.classList.contains('observador');
   box.hidden = !visible;
   if (!visible) return;
-  const nombre = id => (agenteDe(id) || {}).nombre || 'Delegado';
   const chips = oradores.map((o, i) => { const a = agenteDe(o.id); if (!a) return '';
-    return `<span class="orador" style="--c:${a.color}"><span class="mini">${esc(monograma(a))}</span>
-      <span class="q"><b>${esc(a.nombre)}</b><em>${o.tipo === 'alusion' ? `por alusiones de ${esc(nombre(o.por))}` : `pide la palabra${o.motivo ? ': ' + esc(o.motivo) : ''}`}</em></span>
+    return `<span class="orador ${o.tipo}" style="--c:${a.color}"><span class="mini">${esc(monograma(a))}</span>
+      <span class="q"><b>${esc(a.nombre)}</b><em>${(ETQ_ORADOR[o.tipo] || ETQ_ORADOR.pide)(o)}</em></span>
       <button type="button" class="contorno peq" data-dar="${i}">${ico('mazo')}<span>Conceder</span></button>
       <button type="button" class="icono" data-quitar="${i}" aria-label="Retirar de la lista">${ico('x')}</button></span>`; }).join('');
   box.innerHTML = `<div class="cab-or"><span class="s-num">Lista de oradores</span>${oradores.length ? '' : '<span class="ayuda">Nadie ha pedido la palabra</span>'}
       <span class="grow"></span>
-      <button type="button" class="enlace peq" id="orSolicitar" title="Cada delegado decide si quiere intervenir">${ico('persona')}<span>¿Quién pide la palabra?</span></button>
+      <button type="button" class="enlace peq" id="orSolicitar" title="Cada delegado decide si quiere intervenir o plantear una cuestión de orden">${ico('persona')}<span>Solicitudes</span></button>
+      <div class="desplegable"><button type="button" class="enlace peq" id="orMociones" title="Mociones de procedimiento que votan los delegados">${ico('balanza')}<span>Mociones</span></button>
+        <div class="menu-mini" id="menuMociones" hidden>
+          <button type="button" data-m="cierre">Cierre del debate <small>y pasar a votar el acuerdo</small></button>
+          ${sesion.orden_dia.length > 1 && sesion.punto < sesion.orden_dia.length - 1 ? '<button type="button" data-m="siguiente">Pasar al siguiente punto</button>' : ''}
+          <button type="button" data-m="limite" data-n="80">Limitar el tiempo de palabra a 80 palabras</button>
+          <button type="button" data-m="limite" data-n="120">Limitar el tiempo de palabra a 120 palabras</button>
+          <button type="button" data-m="cuarto">Cuarto intermedio</button>
+        </div></div>
       <select id="orDar" title="Conceder la palabra a un delegado"><option value="">Dar la palabra a…</option>
         ${panel.agentes.map(a => `<option value="${a.id}">${esc(a.nombre)} · ${esc(corto(a.comite))}</option>`).join('')}</select></div>
     ${chips ? `<div class="chips">${chips}</div>` : ''}`;
-  box.querySelectorAll('[data-dar]').forEach(b => b.onclick = () => { const o = oradores[+b.dataset.dar]; concederPalabra(o.id, o.tipo === 'alusion' ? 'alusion' : 'palabra', o.por); });
-  box.querySelectorAll('[data-quitar]').forEach(b => b.onclick = () => { oradores.splice(+b.dataset.quitar, 1); pintarOradores(); });
+  box.querySelectorAll('[data-dar]').forEach(b => b.onclick = () => { const o = oradores[+b.dataset.dar]; concederPalabra(o.id, o.tipo === 'pide' ? 'palabra' : o.tipo, o.por); });
+  box.querySelectorAll('[data-quitar]').forEach(b => b.onclick = () => { oradores.splice(+b.dataset.quitar, 1); pintarOradores(); guardarOradores(); });
   $('#orDar').onchange = e => { if (e.target.value) concederPalabra(e.target.value, 'palabra'); };
   $('#orSolicitar').onclick = abrirSolicitudes;
+  $('#orMociones').onclick = e => { e.stopPropagation(); $('#menuMociones').hidden = !$('#menuMociones').hidden; };
+  $('#menuMociones').querySelectorAll('[data-m]').forEach(b => b.onclick = () => { $('#menuMociones').hidden = true; mocion(b.dataset.m, b.dataset.n); });
 }
+document.addEventListener('click', e => { const m = $('#menuMociones'); if (m && !e.target.closest('.desplegable')) m.hidden = true; });
 async function concederPalabra(id, modo = 'palabra', por = null) {
   if (!qActual || $('#enviar').disabled) return avisar(qActual ? 'Espere a que termine la intervención en curso.' : 'Plantee primero el asunto a la Asamblea.', true);
+  if (sesion && sesion.receso) return avisar('La sesión está en cuarto intermedio.', true);
   const a = agenteDe(id); if (!a) return;
   const i = oradores.findIndex(o => o.id === id); if (i >= 0) oradores.splice(i, 1);
   const q = qActual, pid = panel.id, vigente = () => panel && panel.id === pid && qActual === q;
   ocupado(true, 'En uso de la palabra');
-  progreso = { ronda: 0, hechos: 0, de: 1, turno: a.nombre, titulo: modo === 'alusion' ? 'Réplica por alusiones' : 'Uso de la palabra' };
+  progreso = { ronda: 0, hechos: 0, de: 1, turno: a.nombre,
+    titulo: { alusion: 'Réplica por alusiones', orden: 'Cuestión de orden' }[modo] || 'Uso de la palabra' };
   estado[id] = 'pensando'; sel = id;
   pintarOradores(); pintarArco(); pintarMesa();
   await intervenir(q, id, { modo, por, vigente });
@@ -50,16 +66,30 @@ async function concederPalabra(id, modo = 'palabra', por = null) {
 }
 async function abrirSolicitudes() {
   if (!qActual || $('#enviar').disabled) return;
-  const b = $('#orSolicitar'); b.disabled = true; b.querySelector('span').textContent = 'Consultando a los delegados…';
+  const b = $('#orSolicitar'); b.disabled = true; b.querySelector('span').textContent = 'Consultando…';
   try {
     const ultimo = [...msgs].reverse().find(m => m.rol === 'agent' && !m.error);
-    const piden = await api(`/api/preguntas/${qActual}/solicitudes${ultimo ? `?excluir=${ultimo.agente_id}` : ''}`, { method: 'POST' });
-    let nuevos = 0;
-    for (const p of piden) if (!oradores.some(o => o.id === p.agente_id)) { oradores.push({ id: p.agente_id, tipo: 'pide', motivo: p.motivo }); nuevos++; }
-    avisar(piden.length ? `${piden.length} delegado${piden.length > 1 ? 's piden' : ' pide'} la palabra.` : 'Ningún delegado pide la palabra: puede pasar a deliberar el acuerdo.');
+    const r = await api(`/api/preguntas/${qActual}/solicitudes${ultimo ? `?excluir=${ultimo.agente_id}` : ''}`, { method: 'POST' });
+    if (r.oradores) fijarOradores(r.oradores);
+    const ordenes = r.piden.filter(p => p.tipo === 'orden').length, piden = r.piden.length - ordenes;
+    avisar(!r.piden.length ? 'Ningún delegado pide la palabra: puede pasar a deliberar el acuerdo.'
+      : [piden ? `${piden} delegado${piden > 1 ? 's piden' : ' pide'} la palabra` : '', ordenes ? `${ordenes} cuestión${ordenes > 1 ? 'es' : ''} de orden` : ''].filter(Boolean).join(' · ') + '.');
     pedirConsumo();
   } catch (e) { avisar(e.message, true); }
   pintarOradores();
+}
+async function mocion(tipo, n) {
+  if (!sesion || $('#enviar').disabled) return;
+  ocupado(true, 'Votando la moción');
+  try {
+    const r = await api(`/api/sesiones/${sesion.id}/mociones`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo, palabras: n ? +n : undefined }) });
+    sesion = r.sesion; fijarOradores(sesion.oradores);
+    avisar(`${r.mocion}: ${r.resultado.texto}.`, !r.resultado.aprobada);
+    pedirConsumo(); pintarSesionBar(); pintarOradores();
+    if (r.resultado.aprobada && tipo === 'siguiente') { qActual = null; estado = {}; sel = null; pintarArco(); pintarMesa(); }
+    if (r.resultado.aprobada && tipo === 'cierre') { ocupado(false); abrirVotacion(); return; }
+  } catch (e) { avisar(e.message, true); }
+  ocupado(false);
 }
 
 // ---- convocatoria ----
@@ -110,6 +140,7 @@ $('#formAsamblea').onsubmit = async e => {
   try {
     await api('/api/asamblea/sesiones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       asunto: e.target.asunto.value.trim(), limite_palabras: asaLimite ? +asaLimite : null, modo_debate: asaModo, comites,
+      orden_dia: e.target.orden_dia.value.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean),
       anexos: [...$('#asaAnexos').querySelectorAll('input:checked')].map(i => +i.value) }) });
     $('#dlgAsamblea').close();
     const asam = paneles.find(p => p.tipo === 'asamblea');
