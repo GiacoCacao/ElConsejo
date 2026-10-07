@@ -26,6 +26,8 @@ const ICONOS = {
   imprimir: '<path d="M7 9V3.5h10V9M7 17.5H4.5v-8h15v8H17M7 14h10v6.5H7z"/>',
   descargar: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>',
   enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
+  deslizadores: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
+  salir: '<path d="M14 4.5h5.5v15H14M10 8l-4 4 4 4M6 12h10"/>',
   arriba: '<path d="M6 15l6-6 6 6"/>', abajo: '<path d="M6 9l6 6 6-6"/>',
   imagen: '<rect x="3.5" y="5" width="17" height="14" rx="1"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8 8"/>',
 };
@@ -43,6 +45,7 @@ const ORNAMENTO = '<svg class="orn" viewBox="0 0 120 14" aria-hidden="true"><pat
 // ---- utilidades ----
 const api = async (url, opt) => {
   const r = await fetch(url, opt);
+  if (r.status === 401) { location.href = '/login'; throw new Error('Inicie sesión para continuar'); }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Error ${r.status}`);
   return r.status === 204 ? null : r.json();
 };
@@ -358,7 +361,7 @@ $('#cerrar').onclick = () => $('#lateral').hidden = true;
 
 
 // ---- consumo de la API ----
-let consumoDatos = null, consumoT = null;
+let consumoDatos = null, consumoT = null, avisoTope = false;
 const nf = (x, d = 0) => Number(x || 0).toLocaleString('es', { minimumFractionDigits: d, maximumFractionDigits: d });
 const fTok = n => n < 1000 ? nf(n) : n < 1e6 ? nf(n / 1e3, 1) + ' k' : nf(n / 1e6, n < 1e7 ? 2 : 1) + ' M';
 const fUSD = x => x == null ? '—' : x === 0 ? 'US$ 0' : 'US$ ' + nf(x, x < 0.01 ? 4 : x < 1 ? 3 : 2);
@@ -383,6 +386,11 @@ function pintarConsumo() {
   $('#cCtxBar').parentElement.classList.toggle('alto', !!max && max.pct > 75);
   $('#cCtx').textContent = max ? `${nf(max.pct, max.pct < 10 ? 1 : 0)} % · ${fTok(max.contexto_usado)} / ${fTok(max.contexto_max)}` : 'sin uso';
   $('#cTok').textContent = `↑ ${fTok(d.panel.entrada)}  ↓ ${fTok(d.panel.salida)}`;
+  const g = d.gasto || {};
+  $('#consumo').classList.toggle('tope', !!g.excedido); $('#consumo').classList.toggle('cerca', !!g.cerca);
+  $('#consumo').title = g.excedido ? `Tope de gasto ${g.excedido} alcanzado${g.modo === 'bloquear' ? ': las consultas están bloqueadas' : ''} — ver Ajustes`
+    : 'Consumo de la API y costes aproximados — pulse para ver el detalle';
+  if (g.excedido && !avisoTope) { avisoTope = true; avisar(`Tope de gasto ${g.excedido} alcanzado (hoy US$ ${nf(g.hoy, 3)} · mes US$ ${nf(g.mes, 3)})${g.modo === 'bloquear' ? '. Las consultas están bloqueadas.' : '.'}`, true); }
   $('#cCoste').textContent = innerWidth < 760 ? fUSD(d.panel.coste)
     : d.ultima ? `${fUSD(d.ultima.coste)} última · ${fUSD(d.panel.coste)} panel` : `${fUSD(d.panel.coste)} panel`;
 }

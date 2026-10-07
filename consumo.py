@@ -121,7 +121,52 @@ def resumen(panel):
         "ultima": _suma([f for f in del_panel if f["pregunta_id"] == ult and f["tipo"] != "resumen"], tars) if ult else None,
         "global": _suma(todas, tars),
         "agentes": agentes,
+        "gasto": estado_gasto(),
     }
+
+
+# ---- tope de gasto --------------------------------------------------------------
+def _inicios():
+    from zoneinfo import ZoneInfo
+    ahora = datetime.now(ZoneInfo(config.TZ))
+    dia = ahora.replace(hour=0, minute=0, second=0, microsecond=0)
+    return dia.timestamp(), dia.replace(day=1).timestamp()
+
+
+def gastado(desde):
+    with bd.db() as c:
+        tars = tarifas(c)
+        filas = c.execute("SELECT * FROM consumo WHERE ts>=?", (desde,)).fetchall()
+    return sum(coste(f, tars.get(f["modelo"])) or 0 for f in filas)
+
+
+def limites():
+    def num(k):
+        v = bd.ajuste(k)
+        return float(v) if v not in (None, "") else None
+    return {"diario": num("limite_diario"), "mensual": num("limite_mensual"), "modo": bd.ajuste("limite_modo", "avisar")}
+
+
+def estado_gasto():
+    dia, mes = _inicios()
+    lim = limites()
+    hoy, este_mes = gastado(dia), gastado(mes)
+    excedido = ("mensual" if lim["mensual"] is not None and este_mes >= lim["mensual"]
+                else "diario" if lim["diario"] is not None and hoy >= lim["diario"] else None)
+    cerca = any(lim[k] and v >= 0.8 * lim[k] for k, v in (("diario", hoy), ("mensual", este_mes)))
+    return {"hoy": hoy, "mes": este_mes, **lim, "excedido": excedido, "cerca": cerca and not excedido}
+
+
+def comprobar():
+    """Antes de cada llamada: con el modo «bloquear», no se gasta más allá del tope."""
+    lim = limites()
+    if lim["modo"] != "bloquear" or (lim["diario"] is None and lim["mensual"] is None):
+        return
+    e = estado_gasto()
+    if e["excedido"]:
+        tope = e["mensual"] if e["excedido"] == "mensual" else e["diario"]
+        cifra = f"{tope:.6f}".rstrip("0").rstrip(".") if tope < 1 else f"{tope:.2f}"
+        raise RuntimeError(f"Tope de gasto {e['excedido']} alcanzado (US$ {cifra}). Súbalo en Ajustes para seguir consultando.")
 
 
 def tarifa_valida(d):

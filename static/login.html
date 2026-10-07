@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#07080b">
+<title>El Consejo · Acceso</title>
+<link rel="stylesheet" href="/static/consejo.css">
+<style>
+  body{display:grid;place-items:center;overflow:hidden}
+  #fondo{position:fixed;inset:-2%;z-index:-1}
+  .acceso{width:min(420px,90vw);text-align:center;padding:46px 40px 40px;border:1px solid var(--linea-fuerte);border-radius:3px;
+    background:linear-gradient(180deg,rgba(18,20,27,.9),rgba(9,10,14,.94));backdrop-filter:blur(12px);box-shadow:0 60px 120px -30px #000;
+    animation:emerger .7s var(--curva)}
+  .acceso .sello{width:64px;height:64px;margin:0 auto 18px;display:block}
+  .acceso h1{font:500 30px/1 var(--serif);letter-spacing:.28em;text-transform:uppercase;margin:0 0 8px}
+  .acceso .lema{font-size:10px;letter-spacing:.38em;text-transform:uppercase;color:var(--oro);margin-bottom:34px}
+  .acceso input{width:100%;background:transparent;border:0;border-bottom:1px solid var(--linea-fuerte);color:var(--marfil);
+    font:400 17px var(--sans);padding:10px 2px;text-align:center;letter-spacing:.1em;outline:none;transition:border-color .3s}
+  .acceso input:focus{border-color:var(--oro)}
+  .acceso input::placeholder{font:italic 18px var(--serif);letter-spacing:0;color:var(--humo)}
+  .acceso button{width:100%;justify-content:center;margin-top:28px}
+  .acceso .error{min-height:20px;margin-top:14px;font-size:12.5px;color:var(--rojo)}
+  .credito{position:fixed}
+</style>
+</head>
+<body>
+<div id="fondo" aria-hidden="true"></div>
+<form class="acceso" id="f">
+  <svg class="sello" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22.5"/><circle cx="24" cy="24" r="18.5" class="fino"/><path d="M11 30 A13 13 0 0 1 37 30" class="fino"/><text x="24" y="30.5">C</text></svg>
+  <h1>El Consejo</h1>
+  <div class="lema">Consejo de expertos</div>
+  <input id="clave" type="password" autocomplete="current-password" placeholder="Clave de acceso" autofocus required>
+  <button class="dorado" type="submit"><span class="etq">Entrar en la sala</span></button>
+  <div class="error" id="err" role="alert"></div>
+</form>
+<a class="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
+<script>
+document.getElementById('f').onsubmit = async e => {
+  e.preventDefault();
+  const b = e.target.querySelector('button'), err = document.getElementById('err');
+  b.disabled = true; err.textContent = '';
+  try {
+    const r = await fetch('/api/acceso', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clave: document.getElementById('clave').value }) });
+    if (r.ok) { location.href = '/'; return; }
+    err.textContent = (await r.json().catch(() => ({}))).error || 'No se pudo entrar';
+  } catch { err.textContent = 'Sin conexión con el servidor'; }
+  b.disabled = false; document.getElementById('clave').select();
+};
+</script>
+</body>
+</html>

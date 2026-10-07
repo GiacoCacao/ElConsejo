@@ -6,12 +6,15 @@ _tmp = tempfile.mkdtemp()
 os.environ["CONSEJO_DATOS"] = _tmp
 os.environ["CONSEJO_IA_CLAVE"] = "x"
 os.environ["CONSEJO_FABRICA_URL"] = "http://fabrica.invalida"
+os.environ["CONSEJO_SIN_COPIAS"] = "1"
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest  # noqa: E402
 
 import fabrica  # noqa: E402
 import ia  # noqa: E402
+
+LLAMAR_REAL = ia.llamar   # la de verdad, antes de que las pruebas la sustituyan
 
 VOTOS = {}   # nombre del experto -> lo que «vota» la IA simulada (por defecto, A FAVOR)
 

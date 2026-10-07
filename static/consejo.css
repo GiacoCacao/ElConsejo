@@ -473,6 +473,26 @@ button.peq,.peq{padding:6px 10px;font-size:10.5px}
 .botones.arriba{margin:0 0 22px;padding-top:0;border-top:0}
 .v-calidad{display:flex;justify-content:center;gap:10px;margin-top:10px}
 
+/* ---- ajustes y tope de gasto ---- */
+.aj{padding-bottom:18px;margin-bottom:6px;border-bottom:1px solid var(--linea)}
+.aj:last-child{border-bottom:0}
+.aj h3.sub{margin-top:14px}
+.aj h3 .contorno{font-family:var(--sans);font-size:11px}
+a.enlace{text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.tiles.dos{grid-template-columns:1fr 1fr}
+.tile .medidor{display:block;margin:6px 0 8px}
+.rejilla3{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:22px;align-items:end;margin-bottom:6px}
+.consumo.cerca{border-color:rgba(224,178,107,.55)}.consumo.cerca .val.oro{color:#e0b26b}
+.consumo.tope{border-color:rgba(194,113,102,.7)}.consumo.tope .val.oro{color:var(--rojo)}
+.consumo.tope .led{background:var(--rojo);box-shadow:0 0 8px var(--rojo)}
+.acciones .icono{margin-left:6px}
+/* observador: solo lectura */
+body.observador #chat,body.observador #nuevo,body.observador #editar,body.observador #sbIniciar,body.observador #sbDeliberar,
+body.observador #sbCerrar,body.observador #sbOrden,body.observador .zona,body.observador .doc [data-a=del],body.observador .doc [data-a=re],
+body.observador [data-del],body.observador #actaTrasladar,body.observador .traslado,body.observador #nuevaTarifa,body.observador #tablaTarifas button{display:none!important}
+body.observador #tablaTarifas input{pointer-events:none;border-color:transparent}
+body.observador #mesa{bottom:24px}
+
 /* ---- avisos ---- */
 #avisos{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .aviso-t{background:#14161d;border:1px solid var(--linea-fuerte);border-left:2px solid var(--oro);padding:11px 18px;font-size:13px;color:var(--marfil);
@@ -499,7 +519,7 @@ button.peq,.peq{padding:6px 10px;font-size:10.5px}
   .agente .n{font-size:9px;letter-spacing:.16em}.agente .r,.agente .pool{display:none}
   .atajo{display:none}
   .consumo{top:10px;padding:6px 12px}.c-svc,.c-tok,.consumo .medidor{display:none}.consumo .c-blq:nth-of-type(2){border-left:0;padding-left:0}
-  .tiles{grid-template-columns:1fr 1fr}
+  .tiles{grid-template-columns:1fr 1fr}.rejilla3{grid-template-columns:1fr}
   .sesionbar .peq span,.s-chip{display:none}.orden,.v-modos,.v-motivos{grid-template-columns:1fr}
   .v-cab,.v-cuerpo{padding-left:16px;padding-right:16px}.documento{padding:24px 20px}.v-op{grid-template-columns:32px 1fr 40px}.v-op .barra{display:none}.tabla .opt{display:none}
   .vacio h2{font-size:25px}.vacio p{font-size:12.5px}.vacio .sugerencias{display:none}

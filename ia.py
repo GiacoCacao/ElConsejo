@@ -31,6 +31,11 @@ def llamar(mensajes, modelo=None, temperatura=None, max_tokens=800, uso=None):
     """Devuelve el texto. Si se pasa `uso` (dict), lo rellena con modelo y tokens consumidos."""
     if not configurada():
         raise IAError("Falta CONSEJO_IA_CLAVE en el .env: el consejo aún no puede responder.")
+    import consumo
+    try:
+        consumo.comprobar()
+    except RuntimeError as e:
+        raise IAError(str(e)) from None
     cuerpo = {"model": modelo or config.IA_MODELO, "messages": mensajes, "max_tokens": max_tokens}
     if temperatura is not None:
         cuerpo["temperature"] = temperatura

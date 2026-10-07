@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS votaciones(
 CREATE TABLE IF NOT EXISTS votos(
   id INTEGER PRIMARY KEY AUTOINCREMENT, votacion_id INTEGER, agente_id TEXT, opcion TEXT, motivo TEXT,
   error INTEGER DEFAULT 0, ts REAL);
+CREATE TABLE IF NOT EXISTS ajustes(clave TEXT PRIMARY KEY, valor TEXT);
 CREATE TABLE IF NOT EXISTS semillas(nombre TEXT PRIMARY KEY);   -- paneles de serie ya sembrados
 CREATE INDEX IF NOT EXISTS i_cap_doc ON capitulos(doc_id);
 CREATE INDEX IF NOT EXISTS i_cap_ag ON capitulos(agente_id);
@@ -61,6 +62,20 @@ def db():
         raise
     finally:
         c.close()
+
+
+def ajuste(clave, defecto=None):
+    with db() as c:
+        r = c.execute("SELECT valor FROM ajustes WHERE clave=?", (clave,)).fetchone()
+    return r["valor"] if r else defecto
+
+
+def fijar_ajuste(clave, valor):
+    with db() as c:
+        if valor is None:
+            c.execute("DELETE FROM ajustes WHERE clave=?", (clave,))
+        else:
+            c.execute("INSERT OR REPLACE INTO ajustes VALUES(?,?)", (clave, str(valor)))
 
 
 def init():

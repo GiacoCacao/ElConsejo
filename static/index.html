@@ -37,6 +37,7 @@
     <button id="historial" class="enlace" data-i="actas" title="Transcripción de la sesión en curso">Transcripción</button>
     <button id="editar" class="enlace" data-i="ajustes" title="Configurar este panel">Configurar</button>
     <button id="nuevo" class="contorno" data-i="mas">Nuevo panel</button>
+    <button id="abrirAjustes" class="icono" data-i="deslizadores" title="Ajustes: acceso, tope de gasto y copias de seguridad" aria-label="Ajustes"></button>
   </div>
 </header>
 
@@ -197,6 +198,15 @@
   <div id="vCuerpo" class="v-cuerpo"></div>
 </dialog>
 
+<dialog id="dlgAjustes" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre">Administración</div><h2>Ajustes</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" data-cierra="dlgAjustes" aria-label="Cerrar"></button>
+  </div>
+  <div id="ajustesCuerpo"></div>
+</dialog>
+
 <dialog id="confirmar" class="modal estrecho">
   <div class="sobre">Confirmación</div>
   <p id="confirmarTexto"></p>
@@ -209,5 +219,6 @@
 <div id="avisos" aria-live="polite"></div>
 <script src="/static/consejo.js"></script>
 <script src="/static/sesiones.js"></script>
+<script src="/static/ajustes.js"></script>
 </body>
 </html>

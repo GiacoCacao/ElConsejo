@@ -1,16 +1,20 @@
 """El Consejo — paneles de expertos (agentes IA) que responden, dialogan y se nutren de sus pools."""
 import base64
+import hmac
 import json
 import mimetypes
 import os
 import time
 import uuid
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, abort, jsonify, redirect, request, send_file, send_from_directory, session
 
 import bd
 import config
 import consumo
+import copias
 import fabrica
 import ia
 import paneles_base
@@ -20,6 +24,95 @@ import sesiones
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
 app.register_blueprint(sesiones.bp)
+app.secret_key = config.SECRETO or os.urandom(32)
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  PERMANENT_SESSION_LIFETIME=timedelta(days=30))
+
+# ---- acceso --------------------------------------------------------------------
+LIBRES = ("/salud", "/login", "/api/acceso")
+_fallos = {}   # ip -> marcas de tiempo de intentos fallidos
+
+
+def protegido():
+    return bool(config.CLAVE_PRESIDENCIA)
+
+
+def rol_actual():
+    return session.get("rol") if protegido() else "presidencia"
+
+
+@app.before_request
+def proteger():
+    if not protegido():
+        return None
+    p = request.path
+    if p in LIBRES or p.startswith("/static/"):
+        return None
+    rol = session.get("rol")
+    if not rol:
+        if p.startswith(("/api/", "/img/")):
+            return jsonify(error="Inicie sesión para continuar", acceso=True), 401
+        return redirect("/login")
+    if rol == "observador" and request.method not in ("GET", "HEAD"):
+        return jsonify(error="Modo observador: solo lectura"), 403
+    return None
+
+
+@app.get("/login")
+def pagina_login():
+    if not protegido() or session.get("rol"):
+        return redirect("/")
+    return send_from_directory("static", "login.html")
+
+
+@app.get("/api/acceso")
+def ver_acceso():
+    return jsonify(protegido=protegido(), rol=rol_actual(), observador=bool(config.CLAVE_OBSERVADOR))
+
+
+@app.post("/api/acceso")
+def entrar():
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?").split(",")[0]
+    ahora = time.time()
+    recientes = [t for t in _fallos.get(ip, []) if ahora - t < 600]
+    if len(recientes) >= 5:
+        return jsonify(error="Demasiados intentos. Espere unos minutos."), 429
+    clave = (request.get_json(silent=True) or {}).get("clave", "")
+    rol = None
+    if config.CLAVE_PRESIDENCIA and hmac.compare_digest(clave.encode(), config.CLAVE_PRESIDENCIA.encode()):
+        rol = "presidencia"
+    elif config.CLAVE_OBSERVADOR and hmac.compare_digest(clave.encode(), config.CLAVE_OBSERVADOR.encode()):
+        rol = "observador"
+    if not rol:
+        _fallos[ip] = recientes + [ahora]
+        time.sleep(1)
+        return jsonify(error="Clave incorrecta"), 401
+    _fallos.pop(ip, None)
+    session.clear()
+    session.permanent = True
+    session["rol"] = rol
+    return jsonify(rol=rol)
+
+
+@app.delete("/api/acceso")
+def salir():
+    session.clear()
+    return "", 204
+
+
+def solo_presidencia():
+    if rol_actual() != "presidencia":
+        abort(403)
+
+
+# ---- fecha para los expertos -------------------------------------------------------
+DIAS = "lunes martes miércoles jueves viernes sábado domingo".split()
+MESES = "enero febrero marzo abril mayo junio julio agosto septiembre octubre noviembre diciembre".split()
+
+
+def fecha_actual():
+    d = datetime.now(ZoneInfo(config.TZ))
+    return f"{DIAS[d.weekday()]} {d.day} de {MESES[d.month - 1]} de {d.year}, {d:%H:%M} (hora de Caracas)"
 
 PANEL_EJEMPLO = {
     "nombre": "Consejo de ejemplo",
@@ -114,7 +207,7 @@ def msg_dict(r):
 @app.get("/salud")
 def salud():
     return jsonify(estado="ok", ia_configurada=ia.configurada(), modelo=config.IA_MODELO,
-                   fabrica_configurada=fabrica.configurada())
+                   fabrica_configurada=fabrica.configurada(), acceso_protegido=protegido())
 
 
 @app.get("/")
@@ -275,9 +368,15 @@ def _contenido_usuario(c, q, pregunta_actual):
     return partes
 
 
+AVISO_FECHA = ("Tus conocimientos tienen una fecha de corte anterior a hoy: si la respuesta depende de normas, "
+               "precios, tipos de cambio, cargos o hechos recientes que puedan haber cambiado, adviértelo y recomienda "
+               "verificarlo en fuentes oficiales actuales.")
+
+
 def sistema_agente(panel, agente):
     return (f"{panel['contexto']}\n\nTe llamas {agente['nombre']}"
-            + (f" y eres {agente['rol']}" if agente["rol"] else "") + ".\n" + agente["instrucciones"]).strip()
+            + (f" y eres {agente['rol']}" if agente["rol"] else "") + ".\n" + agente["instrucciones"]
+            + f"\n\nHoy es {fecha_actual()}. {AVISO_FECHA}").strip()
 
 
 def _mensajes_ia(c, panel, agente, qid, ronda):
@@ -386,6 +485,48 @@ def responder(qid, aid):
                         (panel["id"], qid, "agent", aid, texto, int(error), ronda,
                          json.dumps(fuentes, ensure_ascii=False), time.time(), q["sesion_id"]))
         return jsonify(msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone()))
+
+
+# ---- ajustes: tope de gasto y copias de seguridad --------------------------------
+@app.get("/api/ajustes")
+def ver_ajustes():
+    return jsonify(gasto=consumo.estado_gasto(), copias=copias.listar(), copias_guardar=config.COPIAS_GUARDAR,
+                   rol=rol_actual(), protegido=protegido(), observador=bool(config.CLAVE_OBSERVADOR))
+
+
+@app.put("/api/ajustes/gasto")
+def fijar_gasto():
+    solo_presidencia()
+    d = request.get_json(force=True)
+    for k in ("diario", "mensual"):
+        v = d.get(k)
+        if v in (None, ""):
+            bd.fijar_ajuste(f"limite_{k}", None)
+            continue
+        try:
+            v = float(str(v).replace(",", "."))
+        except ValueError:
+            return jsonify(error=f"Tope {k} no válido"), 400
+        if v < 0:
+            return jsonify(error="El tope no puede ser negativo"), 400
+        bd.fijar_ajuste(f"limite_{k}", v)
+    bd.fijar_ajuste("limite_modo", "bloquear" if d.get("modo") == "bloquear" else "avisar")
+    return jsonify(consumo.estado_gasto())
+
+
+@app.post("/api/copias")
+def copia_ahora():
+    solo_presidencia()
+    return jsonify(nombre=copias.hacer(), copias=copias.listar()), 201
+
+
+@app.get("/api/copias/<nombre>")
+def bajar_copia(nombre):
+    solo_presidencia()
+    p = copias.ruta(nombre)
+    if not p:
+        abort(404)
+    return send_file(p, as_attachment=True, download_name=nombre)
 
 
 # ---- consumo y tarifas -----------------------------------------------------
@@ -516,6 +657,8 @@ def arrancar():
                 if not c.execute("SELECT 1 FROM paneles WHERE nombre=?", (p["nombre"],)).fetchone():
                     guardar_panel(c, None, p)
                 c.execute("INSERT INTO semillas VALUES(?)", (p["nombre"],))
+    if not os.environ.get("CONSEJO_SIN_COPIAS"):
+        copias.arrancar()
 
 
 arrancar()

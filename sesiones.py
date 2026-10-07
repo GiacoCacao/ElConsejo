@@ -127,7 +127,7 @@ def transcripcion(c, sid, panel, tope=24000):
 
 def _secretaria(panel, prompt, max_tokens=700, uso_ctx=None):
     sistema = (f"Eres la Secretaría del {panel['nombre']}. Eres neutral, rigurosa y formal; no opinas, "
-               "recoges con fidelidad lo debatido. Escribes en español.")
+               f"recoges con fidelidad lo debatido. Escribes en español. Hoy es {_app().fecha_actual()}.")
     uso = {}
     texto = ia.llamar([{"role": "system", "content": sistema}, {"role": "user", "content": prompt}],
                       temperatura=0.2, max_tokens=max_tokens, uso=uso)

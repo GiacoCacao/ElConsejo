@@ -33,6 +33,16 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   para deliberarla. Las actas anexas llegan a los expertos como contexto.
 - **Registro de sesiones** de todos los consejos, con estado, resultado y acceso al acta.
 
+## Seguridad y administración (Ajustes)
+
+- **Acceso**: con `CONSEJO_CLAVE_PRESIDENCIA` la sala pide clave (control total); `CONSEJO_CLAVE_OBSERVADOR` da acceso
+  de solo lectura. Sesión de 30 días, cookie firmada con `CONSEJO_SECRETO`, bloqueo tras 5 intentos fallidos.
+- **Tope de gasto** diario y mensual en dólares: *avisar* o *bloquear* las llamadas a la IA al alcanzarlo.
+- **Copias de seguridad** diarias de la base de datos (copia en caliente de SQLite) en `datos/copias`, rotativas,
+  descargables desde Ajustes.
+- Los expertos y la Secretaría conocen la **fecha y hora actuales** y advierten cuando su información puede estar
+  desactualizada.
+
 ## Consumo y costes
 
 Una barra en la sala muestra el servicio y su franja tarifaria, el contexto usado (máximo de los

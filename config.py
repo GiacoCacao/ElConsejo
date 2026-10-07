@@ -14,6 +14,14 @@ IA_PENSAR = os.environ.get("CONSEJO_IA_PENSAR", "0") == "1"
 FABRICA_URL = os.environ.get("CONSEJO_FABRICA_URL", "").rstrip("/")
 FABRICA_CLAVE = os.environ.get("CONSEJO_FABRICA_CLAVE", "")
 
+# Acceso: sin CONSEJO_CLAVE_PRESIDENCIA la sala queda abierta a toda la red (como antes)
+CLAVE_PRESIDENCIA = os.environ.get("CONSEJO_CLAVE_PRESIDENCIA", "")
+CLAVE_OBSERVADOR = os.environ.get("CONSEJO_CLAVE_OBSERVADOR", "")
+SECRETO = os.environ.get("CONSEJO_SECRETO", "")   # firma la cookie de sesión
+COPIAS = os.path.join(DATOS, "copias")
+COPIAS_GUARDAR = int(os.environ.get("CONSEJO_COPIAS", "14"))   # cuántas copias diarias se conservan
+TZ = "America/Caracas"
+
 MAX_IMG = 8 * 1024 * 1024
 MAX_DOC = 50 * 1024 * 1024
 HISTORIAL = 8          # turnos previos que ve cada agente
