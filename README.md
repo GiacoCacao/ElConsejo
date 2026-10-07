@@ -46,7 +46,7 @@ Las de DeepSeek vienen de serie, con su precio doble en hora punta (01–04 y 06
 Se crean una sola vez al arrancar (`paneles_base.py`); si se borran, no vuelven: **Empresarial**,
 **Marketing y Ventas**, **Técnico Moderno**, **Psicológico**, **Financiero**, **Filosófico** (con
 materialismo filosófico y teología, entre otras escuelas) **Importaciones a Venezuela**, **Político**, **Militar**, **Internacionalistas y Diplomáticos**,
-**Periodistas**, **Diseño Gráfico**, **Infraestructura IT**, **Electrónica** y **Electricidad**, con seis
+**Periodistas**, **Diseño Gráfico**, **Infraestructura IT**, **Electrónica**, **Electricidad**, **Jurídico** y **Científico**, con seis
 expertos cada uno.
 
 ## Puesta en marcha
