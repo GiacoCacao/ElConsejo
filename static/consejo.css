@@ -65,7 +65,7 @@ button:disabled{cursor:default;opacity:.55}
 #selPanel[aria-expanded=true] .ico{transform:rotate(180deg)}
 .menu{position:absolute;top:calc(100% + 14px);left:50%;transform:translateX(-50%);width:min(820px,94vw);z-index:30;
   background:linear-gradient(180deg,#13151c,#0b0c10);border:1px solid var(--linea-fuerte);border-radius:3px;padding:22px;
-  box-shadow:0 50px 100px -30px #000;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;animation:emerger .35s var(--curva)}
+  box-shadow:0 50px 100px -30px #000;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-height:calc(100vh - 110px);overflow:auto;animation:emerger .35s var(--curva)}
 .menu::before{content:"";position:absolute;top:0;left:22px;right:22px;height:1px;background:linear-gradient(90deg,transparent,var(--oro),transparent);opacity:.6}
 .menu .item{display:block;text-align:left;padding:14px 16px;border:1px solid transparent;border-radius:2px;transition:all .25s}
 .menu .item:hover,.menu .item:focus-visible{border-color:var(--linea);background:rgba(201,169,110,.05);outline:none}

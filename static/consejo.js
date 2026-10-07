@@ -54,7 +54,7 @@ function monograma(a) {
   if (/^[\p{L}]{1,3}$/u.test(m)) return m.toUpperCase();
   const todas = (a.nombre || '?').trim().split(/\s+/), sin = todas.filter(w => !w.endsWith('.'));   // sin «Dr.», «P.»…
   const p = sin.length ? sin : todas;
-  return (p.length > 1 ? p[0][0] + p[1][0] : p[0][0]).toUpperCase();
+  return (p.length > 1 ? p[0][0] + p[p.length - 1][0] : p[0][0]).toUpperCase();   // nombre y último apellido
 }
 function avisar(texto, mal = false) {
   const d = document.createElement('div'); d.className = 'aviso-t' + (mal ? ' mal' : ''); d.textContent = texto;

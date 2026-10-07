@@ -71,6 +71,8 @@ def test_paneles_de_serie_se_siembran_una_vez(cliente):
     assert all(p["nombre"] in nombres for p in paneles_base.PANELES)
     filo = next(p for p in cliente.get("/api/paneles").get_json() if p["nombre"] == "Panel Filosófico")
     assert {"Materialismo filosófico", "Teología"} <= {a["rol"] for a in filo["agentes"]}
+    assert {"Panel Político", "Panel Militar", "Panel de Internacionalistas y Diplomáticos",
+            "Panel de Periodistas"} <= set(nombres)
     cliente.delete(f"/api/paneles/{filo['id']}")
     aplicacion.arrancar()   # un reinicio no lo resucita
     assert "Panel Filosófico" not in [p["nombre"] for p in cliente.get("/api/paneles").get_json()]

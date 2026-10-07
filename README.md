@@ -22,7 +22,8 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
 
 Se crean una sola vez al arrancar (`paneles_base.py`); si se borran, no vuelven: **Empresarial**,
 **Marketing y Ventas**, **Técnico Moderno**, **Psicológico**, **Financiero**, **Filosófico** (con
-materialismo filosófico y teología, entre otras escuelas) e **Importaciones a Venezuela**, con seis
+materialismo filosófico y teología, entre otras escuelas) **Importaciones a Venezuela**, **Político**, **Militar**, **Internacionalistas y Diplomáticos** y
+**Periodistas**, con seis
 expertos cada uno.
 
 ## Puesta en marcha
