@@ -13,6 +13,8 @@ import pytest  # noqa: E402
 import fabrica  # noqa: E402
 import ia  # noqa: E402
 
+VOTOS = {}   # nombre del experto -> lo que «vota» la IA simulada (por defecto, A FAVOR)
+
 MANUAL = "# Manual de huertos urbanos\n\n" + "".join(
     f"## Capítulo {i}. {t}\n\n" + (f"{x} " * 30) + "\n\n" for i, (t, x) in enumerate([
         ("Suelo y sustrato", "El suelo ideal combina compost, tierra negra y fibra de coco."),
@@ -36,6 +38,16 @@ def falsos(monkeypatch):
         if uso is not None:
             uso.update(modelo=modelo or "deepseek-flash", entrada=1000, salida=200, cache=400, estimado=False)
         sis = msgs[0]["content"]
+        ult = msgs[-1]["content"] if isinstance(msgs[-1]["content"], str) else msgs[-1]["content"][0]["text"]
+        if sis.startswith("Eres la Secretaría"):
+            if "ALTERNATIVAS" in ult:
+                return "A) Abrir ya la sucursal.\nB) Esperar seis meses."
+            if "SÍNTESIS" in ult:
+                return "SÍNTESIS:\nLos expertos debatieron con matices.\nCONCLUSIONES:\nConviene actuar por fases."
+            return "El Consejo acuerda: abrir la sucursal por fases."
+        if "somete a votación" in ult:
+            nombre = sis.split("Te llamas ")[1].split(" ")[0].rstrip(".")
+            return f"VOTO: {VOTOS.get(nombre, 'A FAVOR')}\nMOTIVO: Es lo prudente."
         if sis.startswith("Simplificas"):
             return "TITULO: Título IA\nRESUMEN: Resumen simple.\nCLAVES: a, b, c"
         return "Respuesta de " + sis.split("Te llamas ")[1].split(" ")[0]

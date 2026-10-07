@@ -33,7 +33,8 @@
   </div>
   <div class="acciones">
     <button id="abrirPools" class="enlace" data-i="libros" title="Bibliotecas de conocimiento (pools) de cada experto">Bibliotecas</button>
-    <button id="historial" class="enlace" data-i="actas" title="Historial de la conversación">Actas</button>
+    <button id="abrirSesiones" class="enlace" data-i="sesiones" title="Registro de sesiones y actas de cierre">Sesiones</button>
+    <button id="historial" class="enlace" data-i="actas" title="Transcripción de la sesión en curso">Transcripción</button>
     <button id="editar" class="enlace" data-i="ajustes" title="Configurar este panel">Configurar</button>
     <button id="nuevo" class="contorno" data-i="mas">Nuevo panel</button>
   </div>
@@ -53,6 +54,7 @@
 
   <section id="mesa" aria-live="polite">
     <div id="descripcion" class="descripcion"></div>
+    <div id="sesionBar" class="sesionbar"></div>
     <article id="respuesta"></article>
   </section>
 
@@ -82,9 +84,8 @@
 
 <aside id="lateral" class="lateral" hidden aria-label="Actas">
   <div class="cab">
-    <div><div class="sobre">Registro</div><h2>Actas de la sesión</h2></div>
+    <div><div class="sobre" id="latSobre">Sesión en curso</div><h2>Transcripción</h2></div>
     <span class="grow"></span>
-    <button id="vaciar" class="enlace" data-i="papelera">Vaciar</button>
     <button id="cerrar" class="icono" data-i="x" aria-label="Cerrar"></button>
   </div>
   <div id="registro"></div>
@@ -135,6 +136,67 @@
   <div id="consumoCuerpo"></div>
 </dialog>
 
+<dialog id="dlgSesion" class="modal ancho">
+  <form id="formSesion">
+    <div class="cab">
+      <div><div class="sobre" id="sesSobre">Convocatoria</div><h2 id="sesTitulo">Iniciar sesión</h2></div>
+      <span class="grow"></span>
+      <button type="button" class="icono" data-i="x" data-cierra="dlgSesion" aria-label="Cerrar"></button>
+    </div>
+    <label class="fld">Asunto <small>— lo que el Consejo debe resolver</small><input name="asunto" required maxlength="200" placeholder="¿Conviene abrir una sucursal en Valencia este año?"></label>
+    <div class="fld">Modalidad del debate
+      <div class="segmentos grande" id="sesModo"><button type="button" data-m="orden">Por turnos, en orden</button><button type="button" data-m="simultaneo">Simultáneo</button></div>
+      <small id="sesModoAyuda" class="ayuda"></small>
+    </div>
+    <div class="seccion"><h3>Orden del debate</h3><span class="grow"></span>
+      <button type="button" class="enlace" id="sesHemiciclo">Como el hemiciclo</button><button type="button" class="enlace" id="sesAzar">Al azar</button></div>
+    <ol id="sesOrden" class="orden"></ol>
+    <div class="seccion"><h3>Actas anexas</h3><small class="ayuda" style="margin-left:12px">Actas de cierre de cualquier consejo que los expertos tendrán en cuenta</small></div>
+    <div id="sesAnexos" class="anexos"></div>
+    <div class="botones"><span class="grow"></span>
+      <button type="button" class="enlace" data-cierra="dlgSesion">Cancelar</button>
+      <button type="submit" class="dorado" id="sesGuardar"><span class="etq">Abrir sesión</span></button></div>
+  </form>
+</dialog>
+
+<dialog id="dlgSesiones" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre">Registro</div><h2>Sesiones del Consejo</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" data-cierra="dlgSesiones" aria-label="Cerrar"></button>
+  </div>
+  <div class="filtros">
+    <label class="fld">Consejo<select id="regPanel"><option value="">Todos</option></select></label>
+    <label class="fld">Estado<select id="regEstado"><option value="">Todas</option><option value="abierta">En curso</option><option value="cerrada">Cerradas</option></select></label>
+  </div>
+  <div id="regCuerpo" class="registro"></div>
+</dialog>
+
+<dialog id="dlgActa" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre" id="actaSobre">Acta de cierre</div><h2 id="actaTitulo">Acta</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" data-cierra="dlgActa" aria-label="Cerrar"></button>
+  </div>
+  <div class="actabar" id="actaBar">
+    <button type="button" class="enlace" id="actaImprimir" data-i="imprimir">Imprimir</button>
+    <a class="enlace" id="actaDescargar" data-i="descargar" href="#">Descargar</a>
+    <span class="grow"></span>
+    <label class="traslado">Llevar a otro consejo<select id="actaDestino"></select></label>
+    <button type="button" class="contorno" id="actaTrasladar" data-i="enviar">Deliberar / anexar</button>
+  </div>
+  <article id="actaDoc" class="documento"></article>
+</dialog>
+
+<dialog id="votacion" class="pleno">
+  <div class="v-cab">
+    <div><div class="sobre" id="vSobre">Deliberación final</div><h2 id="vTitulo">Deliberar un acuerdo</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" id="vCerrar" aria-label="Cerrar"></button>
+  </div>
+  <div id="vCuerpo" class="v-cuerpo"></div>
+</dialog>
+
 <dialog id="confirmar" class="modal estrecho">
   <div class="sobre">Confirmación</div>
   <p id="confirmarTexto"></p>
@@ -146,5 +208,6 @@
 
 <div id="avisos" aria-live="polite"></div>
 <script src="/static/consejo.js"></script>
+<script src="/static/sesiones.js"></script>
 </body>
 </html>

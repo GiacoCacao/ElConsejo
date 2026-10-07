@@ -18,6 +18,21 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Sesiones, votación y actas
+
+- **Sesión**: cada asunto se trata en una sesión numerada por consejo (botón *Iniciar sesión*; si se consulta sin
+  sesión, se abre una con la pregunta como asunto). Se fija el **orden del debate**: *por turnos* (cada experto
+  interviene en su turno y oye a quienes hablaron antes) o *simultáneo*.
+- **Deliberar acuerdo**: *acuerdo unificado* (la Secretaría —una IA neutral— redacta una propuesta que integra las
+  posturas; se aprueba si nadie vota en contra y, si no, se revisa con las objeciones) o *mayoría simple* (la
+  Secretaría identifica las alternativas del debate y gana la más votada; un empate lo decide el voto de calidad
+  de la presidencia). Pantalla de votación con escaños, recuento y explicación de voto.
+- **Acta de cierre**: los datos objetivos (asistentes, orden, consultas, votos, acuerdo literal) los compone el
+  código; la IA solo redacta la síntesis del debate y las conclusiones, a partir de la transcripción. Se puede
+  imprimir, descargar en Markdown y **llevar a otro consejo**: se anexa a su sesión abierta o abre una sesión
+  para deliberarla. Las actas anexas llegan a los expertos como contexto.
+- **Registro de sesiones** de todos los consejos, con estado, resultado y acceso al acta.
+
 ## Consumo y costes
 
 Una barra en la sala muestra el servicio y su franja tarifaria, el contexto usado (máximo de los

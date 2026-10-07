@@ -15,9 +15,11 @@ import fabrica
 import ia
 import paneles_base
 import pools
+import sesiones
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 app.config["MAX_CONTENT_LENGTH"] = 200 * 1024 * 1024
+app.register_blueprint(sesiones.bp)
 
 PANEL_EJEMPLO = {
     "nombre": "Consejo de ejemplo",
@@ -106,7 +108,7 @@ def msg_dict(r):
     return {"id": r["id"], "pregunta_id": r["pregunta_id"], "rol": r["rol"], "agente_id": r["agente_id"],
             "texto": r["texto"], "imagenes": json.loads(r["imagenes"] or "[]"), "error": bool(r["error"]),
             "ronda": r["ronda"] or 0, "adjuntos": json.loads(r["adjuntos"] or "[]"),
-            "fuentes": json.loads(r["fuentes"] or "[]"), "ts": r["ts"]}
+            "fuentes": json.loads(r["fuentes"] or "[]"), "ts": r["ts"], "sesion_id": r["sesion_id"]}
 
 
 @app.get("/salud")
@@ -164,6 +166,9 @@ def _borrar_conversacion(c, pid):
 def borrar(pid):
     with bd.db() as c:
         _borrar_conversacion(c, pid)
+        # las sesiones con acta se conservan (pueden estar anexadas en otros consejos); el resto se borra
+        for s in c.execute("SELECT id FROM sesiones WHERE panel_id=? AND acta IS NULL", (pid,)).fetchall():
+            sesiones.borrar_sesion(c, s["id"])
         for d in c.execute("SELECT * FROM docs WHERE panel_id=?", (pid,)).fetchall():
             _quitar_doc(c, d)
         c.execute("DELETE FROM paneles WHERE id=?", (pid,))
@@ -237,8 +242,10 @@ def preguntar(pid):
             os.remove(os.path.join(config.IMG, n))
         return jsonify(error=str(e)), 502
     with bd.db() as c:
-        cur = c.execute("INSERT INTO mensajes(panel_id,rol,texto,imagenes,adjuntos,ronda,ts) VALUES(?,?,?,?,?,0,?)",
-                        (pid, "user", texto, json.dumps(imagenes), json.dumps(adjuntos), time.time()))
+        s = sesiones.activa(c, pid)   # sin sesión abierta, consultar abre una con la pregunta como asunto
+        sid = s["id"] if s else sesiones.abrir(c, pid, texto[:120] or (adjuntos[0]["nombre"] if adjuntos else "Consulta al Consejo"))
+        cur = c.execute("INSERT INTO mensajes(panel_id,rol,texto,imagenes,adjuntos,ronda,ts,sesion_id) VALUES(?,?,?,?,?,0,?,?)",
+                        (pid, "user", texto, json.dumps(imagenes), json.dumps(adjuntos), time.time(), sid))
         qid = cur.lastrowid
         c.execute("UPDATE mensajes SET pregunta_id=id WHERE id=?", (qid,))
         for a in adjuntos:
@@ -268,20 +275,35 @@ def _contenido_usuario(c, q, pregunta_actual):
     return partes
 
 
+def sistema_agente(panel, agente):
+    return (f"{panel['contexto']}\n\nTe llamas {agente['nombre']}"
+            + (f" y eres {agente['rol']}" if agente["rol"] else "") + ".\n" + agente["instrucciones"]).strip()
+
+
 def _mensajes_ia(c, panel, agente, qid, ronda):
     q = c.execute("SELECT * FROM mensajes WHERE id=?", (qid,)).fetchone()
+    ses = c.execute("SELECT * FROM sesiones WHERE id=?", (q["sesion_id"],)).fetchone() if q["sesion_id"] else None
     cono, fuentes = pools.conocimiento(agente["id"], q["texto"] or " ".join(
         d["nombre"] for d in c.execute("SELECT nombre FROM docs WHERE pregunta_id=?", (qid,))))
-    sistema = (f"{panel['contexto']}\n\nTe llamas {agente['nombre']}"
-               + (f" y eres {agente['rol']}" if agente["rol"] else "") + ".\n" + agente["instrucciones"])
+    sistema = sistema_agente(panel, agente)
+    if ses:
+        sistema += f"\n\nEstás en la sesión nº {ses['numero']} del Consejo. Asunto: {ses['asunto']}."
+        anexos = sesiones.texto_anexos(c, ses)
+        if anexos:
+            sistema += ("\n\nSe han anexado a esta sesión actas de otras sesiones o consejos. Tenlas en cuenta y "
+                        "cítalas cuando sean pertinentes:\n\n" + anexos)
     if cono:
         sistema += ("\n\nTienes una biblioteca propia. Estos son los pasajes más pertinentes para la pregunta; "
                     "úsalos cuando aporten y di de qué documento y capítulo sacas cada dato. Si no vienen al caso, "
                     "ignóralos:\n\n" + cono)
     msgs = [{"role": "system", "content": sistema.strip()}]
 
-    previos = c.execute("SELECT * FROM mensajes WHERE panel_id=? AND pregunta_id<? ORDER BY id",
-                        (panel["id"], qid)).fetchall()
+    if ses:   # cada sesión es un asunto: el historial no sale de ella
+        previos = c.execute("SELECT * FROM mensajes WHERE sesion_id=? AND pregunta_id<? ORDER BY id",
+                            (ses["id"], qid)).fetchall()
+    else:
+        previos = c.execute("SELECT * FROM mensajes WHERE panel_id=? AND pregunta_id<? ORDER BY id",
+                            (panel["id"], qid)).fetchall()
     ultimas = {}   # por pregunta, la última ronda de ESTE agente (su postura final)
     for m in previos:
         if m["rol"] == "agent" and m["agente_id"] == agente["id"] and not m["error"]:
@@ -293,6 +315,24 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
         if u["id"] in ultimas:
             msgs.append({"role": "assistant", "content": ultimas[u["id"]]["texto"]})
     msgs.append({"role": "user", "content": _contenido_usuario(c, q, True)})
+
+    # debate por turnos: quien habla después oye a quienes ya intervinieron en esta misma ronda
+    previos_turno = []
+    if ses and ses["modo_debate"] == "orden":
+        orden = sesiones._orden(json.loads(ses["orden"] or "[]"), panel)
+        nombres = {a["id"]: a for a in panel["agentes"]}
+        for aid in orden[:orden.index(agente["id"])] if agente["id"] in orden else []:
+            m = c.execute("SELECT texto FROM mensajes WHERE pregunta_id=? AND rol='agent' AND agente_id=? AND ronda=? "
+                          "AND error=0", (qid, aid, ronda)).fetchone()
+            if m:
+                previos_turno.append(f"**{nombres[aid]['nombre']}** ({nombres[aid]['rol'] or 'experto'}): {m['texto']}")
+    if ronda == 0 and previos_turno:
+        msgs[-1] = {"role": "user", "content": msgs[-1]["content"] if isinstance(msgs[-1]["content"], list) else
+                    msgs[-1]["content"] + "\n\n---\nEn el orden del debate ya han intervenido:\n\n" + "\n\n".join(previos_turno)
+                    + "\n\nAporta tu visión sin repetir lo ya dicho; puedes apoyarte en ellos o rebatirlos."}
+        if isinstance(msgs[-1]["content"], list):   # con imágenes, el texto va en la primera parte
+            msgs[-1]["content"][0]["text"] += ("\n\n---\nEn el orden del debate ya han intervenido:\n\n"
+                                               + "\n\n".join(previos_turno) + "\n\nAporta tu visión sin repetir lo ya dicho.")
 
     if ronda > 0:
         propia = c.execute("SELECT texto FROM mensajes WHERE pregunta_id=? AND rol='agent' AND agente_id=? "
@@ -307,6 +347,8 @@ def _mensajes_ia(c, panel, agente, qid, ronda):
                           "AND ronda=? AND error=0", (qid, a["id"], ronda - 1)).fetchone()
             if m:
                 otros.append(f"**{a['nombre']}** ({a['rol'] or 'experto'}): {m['texto']}")
+        if previos_turno:
+            otros.append("En esta ronda de réplicas ya han hablado antes que tú:\n\n" + "\n\n".join(previos_turno))
         msgs.append({"role": "user", "content":
                      "Esto han respondido tus colegas del consejo:\n\n" + "\n\n".join(otros) +
                      "\n\nRéplica brevemente (máximo 90 palabras): en qué coincides, en qué discrepas y cuál es "
@@ -339,10 +381,10 @@ def responder(qid, aid):
         except Exception as e:  # noqa: BLE001 — se muestra al usuario en la burbuja
             error, texto = True, str(e)[:400]
     with bd.db() as c:
-        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts)"
-                        " VALUES(?,?,?,?,?,?,?,?,?)",
+        cur = c.execute("INSERT INTO mensajes(panel_id,pregunta_id,rol,agente_id,texto,error,ronda,fuentes,ts,sesion_id)"
+                        " VALUES(?,?,?,?,?,?,?,?,?,?)",
                         (panel["id"], qid, "agent", aid, texto, int(error), ronda,
-                         json.dumps(fuentes, ensure_ascii=False), time.time()))
+                         json.dumps(fuentes, ensure_ascii=False), time.time(), q["sesion_id"]))
         return jsonify(msg_dict(c.execute("SELECT * FROM mensajes WHERE id=?", (cur.lastrowid,)).fetchone()))
 
 

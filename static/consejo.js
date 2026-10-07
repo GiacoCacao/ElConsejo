@@ -1,6 +1,7 @@
 const $ = s => document.querySelector(s);
 let paneles = [], panel = null, msgs = [], sel = null, estado = {}, adjuntos = [], qActual = null;
-let progreso = null, ultimoPanel = null;   // progreso = {ronda, total, hechos, de}
+let progreso = null, ultimoPanel = null;   // progreso = {ronda, hechos, de, turno}
+let sesion = null, votaciones = [];        // sesión abierta del panel (sesiones.js)
 const ES_DOC = f => /\.(pdf|docx|txt|md|odt|rtf)$/i.test(f.name);
 const ROMANO = n => ['', 'I', 'II', 'III', 'IV', 'V'][n] || n;
 
@@ -18,6 +19,14 @@ const ICONOS = {
   repetir: '<path d="M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 4.5v4h-4"/>',
   indice: '<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
   izq: '<path d="M15 5l-7 7 7 7"/>', der: '<path d="M9 5l7 7-7 7"/>',
+  mazo: '<path d="M13.5 3.5l7 7M11 6l7 7M12.3 4.7l-6 6 7 7 6-6M9.3 13.7L3.5 19.5M3 21h10"/>',
+  balanza: '<path d="M12 3.5v17M7.5 20.5h9M4.5 7h15M4.5 7L2 13.5a2.6 2.6 0 005 0zM19.5 7L17 13.5a2.6 2.6 0 005 0z"/>',
+  sello: '<circle cx="12" cy="9" r="5.5"/><path d="M8.6 13.4L7 21l5-2.6 5 2.6-1.6-7.6"/>',
+  sesiones: '<rect x="3.5" y="5" width="17" height="15.5" rx="1"/><path d="M3.5 9.5h17M8 3v4M16 3v4M7.5 13h3M7.5 16.5h6"/>',
+  imprimir: '<path d="M7 9V3.5h10V9M7 17.5H4.5v-8h15v8H17M7 14h10v6.5H7z"/>',
+  descargar: '<path d="M12 4v11M7 10.5l5 5 5-5M4.5 20h15"/>',
+  enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
+  arriba: '<path d="M6 15l6-6 6 6"/>', abajo: '<path d="M6 9l6 6 6-6"/>',
   imagen: '<rect x="3.5" y="5" width="17" height="14" rx="1"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8 8"/>',
 };
 const ico = n => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${ICONOS[n] || ''}</svg>`;
@@ -75,14 +84,15 @@ async function cargar(id) {
   paneles = await api('/api/paneles');
   panel = paneles.find(p => p.id === id) || paneles[0] || null;
   if (panel) localStorage.panel = panel.id;
-  msgs = panel ? await api(`/api/paneles/${panel.id}/mensajes`) : [];
+  const est = panel ? await api(`/api/paneles/${panel.id}/sesion`) : { sesion: null, mensajes: [], votaciones: [] };
+  sesion = est.sesion; msgs = est.mensajes; votaciones = est.votaciones;
   sel = null; estado = {}; progreso = null;
   const ult = [...msgs].reverse().find(m => m.rol === 'user');
   qActual = ult ? ult.pregunta_id : null;
   for (const m of msgs) if (m.rol === 'agent' && m.pregunta_id === qActual)
     estado[m.agente_id] = m.error ? 'error' : 'listo';
   if (qActual && panel) sel = (panel.agentes.find(a => estado[a.id]) || {}).id || null;
-  pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro(); cargarConsumo();
+  pintarTabs(); pintarArco(); pintarMesa(); pintarRegistro(); cargarConsumo(); pintarSesionBar();
 }
 async function refrescarAgentes() {   // recuentos de pools, sin tocar la conversación
   const ps = await api('/api/paneles'); const p = ps.find(x => panel && x.id === panel.id);
@@ -138,7 +148,8 @@ function pintarArco() {
       + (progreso && progreso.ronda > 0 && !estado[a.id] ? ' apagado' : '');
     d.tabIndex = 0; d.setAttribute('role', 'button'); d.setAttribute('aria-label', `${a.nombre}, ${a.rol}`);
     d.style.cssText = `left:${x}px;top:${y}px;--c:${a.color};--i:${i}`;
-    d.innerHTML = `<div class="medallon"><span class="anillo"></span><span class="ini">${esc(monograma(a))}</span><span class="punto"></span></div>
+    const turno = sesion && sesion.modo_debate === 'orden' ? sesion.orden.indexOf(a.id) + 1 : 0;
+    d.innerHTML = `<div class="medallon"><span class="anillo"></span><span class="ini">${esc(monograma(a))}</span><span class="punto"></span>${turno ? `<span class="turno" title="Turno ${turno} del debate">${turno}</span>` : ''}</div>
       <div class="n">${esc(a.nombre)}</div><div class="r" title="${esc(a.rol)}">${esc(a.rol)}</div>`
       + (a.capitulos ? `<div class="pool" title="${a.docs} documentos · ${a.capitulos} capítulos">${a.docs} doc · ${a.capitulos} cap.</div>` : '');
     d.onclick = () => elegir(a.id);
@@ -177,7 +188,7 @@ function pintarDescripcion() {
   if (progreso) {
     const tit = progreso.ronda ? `Réplica ${ROMANO(progreso.ronda)}` : 'Deliberando';
     d.className = 'descripcion vivo';
-    d.innerHTML = `${tit} · ${progreso.hechos} de ${progreso.de}<span class="barraP"><i style="width:${100 * progreso.hechos / Math.max(1, progreso.de)}%"></i></span>`;
+    d.innerHTML = `${tit} · ${progreso.turno ? `en uso de la palabra: ${esc(progreso.turno)} · ` : ''}${progreso.hechos} de ${progreso.de}<span class="barraP"><i style="width:${100 * progreso.hechos / Math.max(1, progreso.de)}%"></i></span>`;
   } else { d.className = 'descripcion'; d.textContent = panel ? panel.descripcion || '' : ''; }
 }
 
@@ -204,6 +215,7 @@ function pintarMesa() {
     r.innerHTML = `<div class="vacio">${ORNAMENTO}
       <h2>${qActual ? 'El Consejo ha deliberado' : 'Plantee su consulta al Consejo'}</h2>
       <p>${!hay ? 'Este panel aún no tiene expertos. Configúrelo para empezar.'
+        : sesion && !qActual ? `Sesión nº ${sesion.numero} abierta. Asunto: «${esc(sesion.asunto)}». Plantee la primera consulta para abrir el debate.`
         : qActual ? 'Seleccione a un experto del hemiciclo para leer su dictamen.'
         : 'Cada experto responderá desde su especialidad y, si lo desea, deliberará con sus colegas. Puede adjuntar documentos e imágenes.'}</p>
       ${hay && !qActual ? `<div class="sugerencias">${SUGERENCIAS.map(s => `<button type="button">${esc(s)}</button>`).join('')}</div>` : ''}</div>`;
@@ -233,7 +245,8 @@ function pintarMesa() {
 function pintarRegistro() {
   const box = $('#registro'); box.innerHTML = '';
   if (!panel) return;
-  if (!msgs.length) { box.innerHTML = '<div class="acta vacia">Aún no hay deliberaciones en este panel.</div>'; return; }
+  $('#latSobre').textContent = sesion ? `Sesión nº ${sesion.numero} · ${sesion.asunto}` : 'Sin sesión abierta';
+  if (!msgs.length) { box.innerHTML = '<div class="acta vacia">Aún no hay intervenciones en esta sesión.</div>'; return; }
   for (const m of msgs) {
     const a = panel.agentes.find(x => x.id === m.agente_id);
     const d = document.createElement('div');
@@ -301,13 +314,17 @@ $('#chat').onsubmit = async e => {
     $('#texto').value = ''; autoAlto(); adjuntos = []; pintarAdjuntos(); ocupado(true, 'Deliberando');
     msgs.push(q); qActual = q.pregunta_id; estado = {}; sel = null;
     const pid = panel.id, vigente = () => panel && panel.id === pid && qActual === q.pregunta_id;
-    let activos = panel.agentes.map(a => a.id);
+    if (!sesion || sesion.id !== q.sesion_id) await refrescarSesion();   // consultar abre sesión si no la había
+    const enOrden = !!sesion && sesion.modo_debate === 'orden';
+    const nombreDe = id => (panel.agentes.find(a => a.id === id) || {}).nombre;
+    let activos = enOrden ? sesion.orden.filter(id => panel.agentes.some(a => a.id === id)) : panel.agentes.map(a => a.id);
     for (let r = 0; r <= nR && activos.length; r++) {
-      progreso = { ronda: r, hechos: 0, de: activos.length };
+      progreso = { ronda: r, hechos: 0, de: activos.length, turno: null };
       if (r) estado = {};
-      activos.forEach(id => estado[id] = 'pensando');
+      activos.forEach(id => estado[id] = enOrden ? 'espera' : 'pensando');
       pintarArco(); pintarMesa(); pintarRegistro();
-      const hechos = await Promise.all(activos.map(async id => {
+      const uno = async id => {
+        if (enOrden) { estado[id] = 'pensando'; progreso.turno = nombreDe(id); sel = id; pintarArco(); pintarMesa(); }
         let m;
         try { m = await api(`/api/preguntas/${q.pregunta_id}/agentes/${id}?ronda=${r}`, { method: 'POST' }); }
         catch (err) { m = { rol: 'agent', agente_id: id, pregunta_id: q.pregunta_id, ronda: r, texto: err.message, error: true, imagenes: [], adjuntos: [], fuentes: [], ts: Date.now() / 1000 }; }
@@ -316,7 +333,10 @@ $('#chat').onsubmit = async e => {
         if (!sel) sel = id;
         pintarArco(); pintarMesa(); pintarRegistro(); pedirConsumo();
         return m;
-      }));
+      };
+      let hechos = [];
+      if (enOrden) { for (const id of activos) { const m = await uno(id); if (!vigente()) break; hechos.push(m); } }
+      else hechos = await Promise.all(activos.map(uno));
       if (!vigente()) break;
       activos = hechos.filter(m => m && !m.error).map(m => m.agente_id);
     }
@@ -328,16 +348,13 @@ $('#chat').onsubmit = async e => {
       if (fallos) avisar(`${fallos} intervención(es) no se pudieron completar. Lea el detalle en cada experto.`, true);
     }
   } catch (err) { avisar(err.message, true); }
-  progreso = null; pintarDescripcion(); ocupado(false);
+  progreso = null; pintarDescripcion(); ocupado(false); pintarSesionBar();
 };
 
 // ---- actas ----
 $('#historial').onclick = () => { $('#lateral').hidden = !$('#lateral').hidden; pintarRegistro(); };
 $('#cerrar').onclick = () => $('#lateral').hidden = true;
-$('#vaciar').onclick = async () => {
-  if (!panel || !await confirmar('¿Vaciar las actas de este panel? Las bibliotecas de los expertos no se tocan.', 'Vaciar')) return;
-  await api(`/api/paneles/${panel.id}/mensajes`, { method: 'DELETE' }); cargar(panel.id); avisar('Actas vaciadas.');
-};
+
 
 
 // ---- consumo de la API ----
