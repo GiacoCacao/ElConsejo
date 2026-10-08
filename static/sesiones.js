@@ -7,7 +7,7 @@ document.querySelectorAll('[data-cierra]').forEach(b => b.addEventListener('clic
 
 async function refrescarSesion() {
   if (!panel) return;
-  const est = await api(`/api/paneles/${panel.id}/sesion`).catch(() => null);
+  const est = await api(urlSesion()).catch(() => null);
   if (!est) return;
   sesion = est.sesion; votaciones = est.votaciones;
   if (typeof fijarOradores === 'function') fijarOradores((sesion && sesion.oradores) || []);
@@ -139,7 +139,7 @@ $('#formSesion').onsubmit = async e => {
   const h = { 'Content-Type': 'application/json' };
   try {
     if (sesEdit) await api(`/api/sesiones/${sesEdit.id}`, { method: 'PUT', headers: h, body: JSON.stringify(cuerpo) });
-    else await api(`/api/paneles/${panel.id}/sesiones`, { method: 'POST', headers: h, body: JSON.stringify(cuerpo) });
+    else await api(`/api/paneles/${panel.id}/sesiones`, { method: 'POST', headers: h, body: JSON.stringify({ ...cuerpo, individual: enDespacho() ? expertoInd.agente : undefined }) });
     $('#dlgSesion').close();
     if (sesEdit) { await refrescarSesion(); avisar('Orden de la sesión actualizado.'); }
     else { await cargar(panel.id); avisar('Sesión abierta. El Consejo está reunido.'); $('#texto').focus(); }

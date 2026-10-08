@@ -28,6 +28,8 @@ const ICONOS = {
   enviar: '<path d="M4 12h12M12 6l6 6-6 6M20 4v16"/>',
   lupa: '<circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5M8.5 10.5h4M10.5 8.5v4"/>',
   persona: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20c1-4 4-6 7-6s6 2 7 6"/>',
+  inicio: '<path d="M4 4.5h6.5V11H4zM13.5 4.5H20V11h-6.5zM4 13h6.5v6.5H4zM13.5 13H20v6.5h-6.5z"/>',
+  asistente: '<path d="M12 3l1.8 4.6L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.4zM18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z"/>',
   grafico: '<path d="M4 20h16M7 16v-5M12 16V7M17 16v-8"/>',
   deslizadores: '<path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/>',
   salir: '<path d="M14 4.5h5.5v15H14M10 8l-4 4 4 4M6 12h10"/>',
@@ -111,11 +113,21 @@ function confirmar(texto, aceptar = 'Aceptar') {
 }
 
 // ---- carga ----
+// ambiente actual (ambientes.js): 'inicio' | 'panel' | 'asamblea' | 'individual'
+let ambiente = localStorage.ambiente || 'inicio';
+let expertoInd = JSON.parse(localStorage.expertoInd || 'null');   // {panel, agente} del despacho
+const enDespacho = () => ambiente === 'individual' && expertoInd && panel && panel.id === expertoInd.panel;
+const urlSesion = () => `/api/paneles/${panel.id}/sesion${enDespacho() ? `?individual=${expertoInd.agente}` : ''}`;
+
 async function cargar(id) {
   paneles = await api('/api/paneles');
   panel = paneles.find(p => p.id === id) || paneles.find(p => p.tipo !== 'asamblea') || paneles[0] || null;
-  if (panel) localStorage.panel = panel.id;
-  const est = panel ? await api(`/api/paneles/${panel.id}/sesion`) : { sesion: null, mensajes: [], votaciones: [] };
+  if (panel && panel.tipo !== 'asamblea' && ambiente !== 'individual') localStorage.panel = panel.id;
+  if (panel && enDespacho()) {   // en el despacho solo está el experto elegido
+    const a = panel.agentes.find(x => x.id === expertoInd.agente);
+    if (a) panel = { ...panel, agentes: [a], todos: panel.agentes };
+  }
+  const est = panel ? await api(urlSesion()) : { sesion: null, mensajes: [], votaciones: [] };
   sesion = est.sesion; msgs = est.mensajes; votaciones = est.votaciones;
   sel = null; estado = {}; progreso = null;
   const ult = [...msgs].reverse().find(m => m.rol === 'user');
@@ -124,6 +136,10 @@ async function cargar(id) {
     estado[m.agente_id] = m.error ? 'error' : 'listo';
   if (qActual && panel) sel = (panel.agentes.find(a => estado[a.id]) || {}).id || null;
   destinoInd = null; pintarDestino();
+  if (panel && ambiente !== 'individual' && typeof aplicarAmbiente === 'function') {   // el ambiente sigue al consejo abierto
+    const debe = panel.tipo === 'asamblea' ? 'asamblea' : 'panel';
+    if (ambiente !== debe) { ambiente = debe; localStorage.ambiente = debe; aplicarAmbiente(); }
+  }
   $('#editar').hidden = !!panel && panel.tipo === 'asamblea';
   document.body.classList.toggle('en-asamblea', !!panel && panel.tipo === 'asamblea');
   if (typeof fijarOradores === 'function') fijarOradores((sesion && sesion.oradores) || []);
@@ -136,7 +152,8 @@ async function refrescarAgentes() {   // recuentos de pools, sin tocar la conver
 }
 
 function pintarTabs() {
-  $('#selNombre').textContent = panel ? panel.nombre : 'Sin paneles';
+  $('#selNombre').textContent = !panel ? 'Sin paneles' : enDespacho() ? `${panel.agentes[0].nombre} · ${panel.nombre}` : panel.nombre;
+  $('#selPanel .sobre').textContent = ambiente === 'individual' ? 'Despacho · consulta individual' : ambiente === 'asamblea' ? 'Ambiente' : 'Panel en sesión';
   const menu = $('#menuPaneles'); menu.innerHTML = '';
   for (const p of paneles) {
     const b = document.createElement('button');
@@ -147,7 +164,7 @@ function pintarTabs() {
       : `<div class="t">${esc(p.nombre)}</div><div class="d">${esc(p.descripcion || '')}</div>
       <div class="caras">${p.agentes.slice(0, 7).map(a => `<span style="--c:${a.color}">${esc(monograma(a))}</span>`).join('')}
       <em>${p.agentes.length} expertos</em></div>`;
-    b.onclick = () => { abrirMenu(false); cargar(p.id); };
+    b.onclick = () => { abrirMenu(false); irA(p.tipo === 'asamblea' ? 'asamblea' : 'panel', { panel: p.id }); };
     menu.append(b);
   }
 }
@@ -155,7 +172,11 @@ function abrirMenu(si) {
   $('#menuPaneles').hidden = !si; $('#selPanel').setAttribute('aria-expanded', si);
   if (si) ($('#menuPaneles .item.act') || $('#menuPaneles .item'))?.focus();
 }
-$('#selPanel').onclick = e => { e.stopPropagation(); abrirMenu($('#menuPaneles').hidden); };
+$('#selPanel').onclick = e => {
+  e.stopPropagation();
+  if (ambiente === 'individual') return abrirSelectorExperto();
+  abrirMenu($('#menuPaneles').hidden);
+};
 document.addEventListener('click', e => { if (!e.target.closest('.selector')) abrirMenu(false); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#menuPaneles').hidden) { abrirMenu(false); $('#selPanel').focus(); } });
 
@@ -279,12 +300,15 @@ function pintarMesa() {
     r.className = 'vacia';
     const hay = panel && panel.agentes.length;
     r.innerHTML = `<div class="vacio">${ORNAMENTO}
-      <h2>${qActual ? 'El Consejo ha deliberado' : 'Plantee su consulta al Consejo'}</h2>
-      <p>${!hay ? 'Este panel aún no tiene expertos. Configúrelo para empezar.'
+      <h2>${enDespacho() ? `Despacho de ${esc(panel.agentes[0].nombre)}` : panel && panel.tipo === 'asamblea' && !hay ? 'La Asamblea no está reunida'
+        : qActual ? 'El Consejo ha deliberado' : 'Plantee su consulta al Consejo'}</h2>
+      <p>${enDespacho() ? `${esc(panel.agentes[0].rol)} · ${esc(panel.nombre)}. La conversación es privada: el resto del consejo no la oye.`
+        : panel && panel.tipo === 'asamblea' && !hay ? 'Convoque a los comités que deben debatir el asunto: elija sus delegados, el tiempo de palabra y el orden del día.'
+        : !hay ? 'Este panel aún no tiene expertos. Configúrelo para empezar.'
         : sesion && !qActual ? `Sesión nº ${sesion.numero} abierta. Asunto: «${esc(sesion.asunto)}». Plantee la primera consulta para abrir el debate.`
         : qActual ? 'Seleccione a un experto del hemiciclo para leer su dictamen.'
         : 'Cada experto responderá desde su especialidad y, si lo desea, deliberará con sus colegas. Puede adjuntar documentos e imágenes.'}</p>
-      ${hay && !qActual ? `<div class="sugerencias">${SUGERENCIAS.map(s => `<button type="button">${esc(s)}</button>`).join('')}</div>` : ''}</div>`;
+      ${hay && !qActual && !enDespacho() ? `<div class="sugerencias">${SUGERENCIAS.map(s => `<button type="button">${esc(s)}</button>`).join('')}</div>` : ''}</div>`;
     r.querySelectorAll('.sugerencias button').forEach(b => b.onclick = () => { $('#texto').value = b.textContent; $('#texto').focus(); autoAlto(); });
     return;
   }
@@ -425,9 +449,13 @@ function pintarDestino() {
   d.innerHTML = a ? `${ico('persona')}<span>Consulta individual a <b>${esc(a.nombre)}</b> · solo este experto la oirá</span>
     <button type="button" aria-label="Volver al pleno">${ico('x')}</button>` : '';
   if (a) d.querySelector('button').onclick = () => { destinoInd = null; pintarDestino(); };
-  $('#texto').placeholder = a ? `Consulta individual a ${a.nombre}…` : (innerWidth < 760 ? 'Su consulta…' : 'Plantee su consulta al Consejo…');
+  $('#texto').placeholder = enDespacho() && panel.agentes[0] ? `Su consulta a ${panel.agentes[0].nombre}…`
+    : a ? `Consulta individual a ${a.nombre}…` : (innerWidth < 760 ? 'Su consulta…' : 'Plantee su consulta al Consejo…');
 }
-function consultaIndividual(id) { destinoInd = id; pintarDestino(); $('#texto').focus(); }
+function consultaIndividual(id) {   // al despacho del experto (ambiente de consulta individual)
+  if (typeof irA === 'function') irA('individual', { panel: panel.id, agente: id });
+  else { destinoInd = id; pintarDestino(); $('#texto').focus(); }
+}
 
 $('#chat').onsubmit = async e => {
   e.preventDefault();
@@ -436,8 +464,9 @@ $('#chat').onsubmit = async e => {
   if (sesion && sesion.receso) return avisar('La sesión está en cuarto intermedio. Reanúdela para continuar.', true);
   const fd = new FormData(); fd.append('texto', $('#texto').value);
   adjuntos.forEach(f => fd.append('imagenes', f));
-  const individual = destinoInd;
-  if (individual) fd.append('destinatario', individual);
+  const individual = enDespacho() ? expertoInd.agente : destinoInd;
+  if (enDespacho()) fd.append('individual', individual);
+  else if (individual) fd.append('destinatario', individual);
   const nR = $('#dialogo').checked && !individual ? rondas : 0;
   ocupado(true, adjuntos.some(ES_DOC) ? 'Procesando' : 'Enviando');
   try {
@@ -755,4 +784,4 @@ new ResizeObserver(() => document.documentElement.style.setProperty('--chat-alto
 let rz; window.addEventListener('resize', () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(pintarArco); });
 hidratar();
 if (innerWidth < 760) $('#texto').placeholder = 'Su consulta…';
-cargar(localStorage.panel);
+// el arranque lo hace ambientes.js (menú principal o el último ambiente)

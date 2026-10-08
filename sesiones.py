@@ -55,7 +55,7 @@ def sesion_dict(c, r, panel=None):
             "orden_dia": json.loads(r["orden_dia"] or "null") or [r["asunto"]], "punto": r["punto"] or 0,
             "receso": bool(r["receso"]), "oradores": json.loads(r["oradores"] or "[]"),
             "asunto": r["asunto"], "estado": r["estado"], "modo_debate": r["modo_debate"],
-            "orden": _orden(json.loads(r["orden"] or "[]"), panel), "anexos": _anexos_info(c, r),
+            "orden": orden_de(r, panel), "anexos": _anexos_info(c, r), "individual": r["individual"],
             "abierta": r["abierta"], "cerrada": r["cerrada"], "acuerdo": r["acuerdo"],
             "resultado": json.loads(r["resultado"] or "null"), "tiene_acta": bool(r["acta"]),
             "consultas": c.execute("SELECT COUNT(*) FROM mensajes WHERE sesion_id=? AND rol='user'", (r["id"],)).fetchone()[0]}
@@ -72,9 +72,20 @@ def _anexos_info(c, r):
     return out
 
 
-def activa(c, pid):
-    return c.execute("SELECT * FROM sesiones WHERE panel_id=? AND estado IN ('abierta','votacion') "
+def activa(c, pid, individual=None):
+    """La sesión abierta del panel; con `individual`, la del despacho de ese experto (van aparte)."""
+    if individual:
+        return c.execute("SELECT * FROM sesiones WHERE panel_id=? AND individual=? AND estado IN ('abierta','votacion') "
+                         "ORDER BY id DESC LIMIT 1", (pid, individual)).fetchone()
+    return c.execute("SELECT * FROM sesiones WHERE panel_id=? AND individual IS NULL AND estado IN ('abierta','votacion') "
                      "ORDER BY id DESC LIMIT 1", (pid,)).fetchone()
+
+
+def orden_de(r, panel):
+    """Orden del debate de una sesión (en una consulta individual, solo su experto)."""
+    if r["individual"]:
+        return [r["individual"]]
+    return _orden(json.loads(r["orden"] or "[]"), panel)
 
 
 def puntos_limpios(lista, asunto):
@@ -82,7 +93,7 @@ def puntos_limpios(lista, asunto):
     return puntos or [(asunto or "").strip()[:200] or "Consulta al Consejo"]
 
 
-def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None, orden_dia=None):
+def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None, orden_dia=None, individual=None):
     panel = _app()._panel(c, pid)
     numero = c.execute("SELECT COALESCE(MAX(numero),0)+1 FROM sesiones WHERE panel_id=?", (pid,)).fetchone()[0]
     validos = []
@@ -99,6 +110,8 @@ def abrir(c, pid, asunto, modo="orden", orden=None, anexos=None, orden_dia=None)
                     (pid, numero, asunto, "abierta", modo if modo in ("orden", "simultaneo") else "orden",
                      json.dumps(_orden(orden or [], panel)), json.dumps(validos), time.time(),
                      json.dumps(puntos_limpios(orden_dia, asunto), ensure_ascii=False)))
+    if individual:
+        c.execute("UPDATE sesiones SET individual=?, orden=? WHERE id=?", (individual, json.dumps([individual]), cur.lastrowid))
     return cur.lastrowid
 
 
@@ -186,7 +199,12 @@ def listar():
                           f"{where} ORDER BY s.abierta DESC", args).fetchall()
         out = []
         for r in filas:
-            out.append({"id": r["id"], "panel_id": r["panel_id"], "panel": r["pnombre"] or "Panel eliminado",
+            experto = None
+            if r["individual"]:
+                p = c.execute("SELECT agentes FROM paneles WHERE id=?", (r["panel_id"],)).fetchone()
+                experto = next((a["nombre"] for a in json.loads(p["agentes"] if p else "[]") if a["id"] == r["individual"]), "Experto")
+            out.append({"id": r["id"], "panel_id": r["panel_id"], "panel": r["pnombre"] or "Panel eliminado", "individual": r["individual"],
+                        "experto": experto,
                         "numero": r["numero"], "asunto": r["asunto"], "estado": r["estado"], "abierta": r["abierta"],
                         "cerrada": r["cerrada"], "acuerdo": r["acuerdo"], "tiene_acta": bool(r["acta"]),
                         "resultado": json.loads(r["resultado"] or "null"),
@@ -200,7 +218,7 @@ def sesion_activa(pid):
     """La sesión abierta del panel, con su transcripción y votaciones (o nada)."""
     with bd.db() as c:
         panel = _app()._panel(c, pid)
-        r = activa(c, pid)
+        r = activa(c, pid, request.args.get("individual") or None)
         if not r:
             return jsonify(sesion=None, mensajes=[], votaciones=[])
         msgs = [_app().msg_dict(m) for m in c.execute("SELECT * FROM mensajes WHERE sesion_id=? ORDER BY id", (r["id"],))]
@@ -211,12 +229,13 @@ def sesion_activa(pid):
 def iniciar(pid):
     d = request.get_json(force=True)
     with bd.db() as c:
-        _app()._panel(c, pid)
-        r = activa(c, pid)
+        panel = _app()._panel(c, pid)
+        ind = d.get("individual") if d.get("individual") in {a["id"] for a in panel["agentes"]} else None
+        r = activa(c, pid, ind)
         if r:
             return jsonify(error=f"Ya hay una sesión abierta (nº {r['numero']}). Ciérrela antes de iniciar otra.",
                            sesion=sesion_dict(c, r)), 409
-        sid = abrir(c, pid, d.get("asunto"), d.get("modo_debate", "orden"), d.get("orden"), d.get("anexos"), d.get("orden_dia"))
+        sid = abrir(c, pid, d.get("asunto"), d.get("modo_debate", "orden"), d.get("orden"), d.get("anexos"), d.get("orden_dia"), ind)
         return jsonify(sesion_dict(c, _sesion(c, sid))), 201
 
 
@@ -518,7 +537,7 @@ def _cita(t):
 
 def componer_acta(c, s, panel, cierre_ts):
     nombres = {a["id"]: a for a in panel["agentes"]}
-    orden = _orden(json.loads(s["orden"] or "[]"), panel)
+    orden = orden_de(s, panel)
     vots = votaciones_de(c, s["id"])
     debate = transcripcion(c, s["id"], panel)
     acuerdo = s["acuerdo"]
@@ -541,7 +560,7 @@ def componer_acta(c, s, panel, cierre_ts):
         except ia.IAError:
             sintesis = "\n".join(f"- {linea[:300]}" for linea in debate.splitlines() if linea.strip())[:4000]
     L = [f"# Acta de la sesión nº {s['numero']}",
-         f"**{panel['nombre']}** · {_fecha(s['abierta'])} · de {_hora(s['abierta'])} a {_hora(cierre_ts)} (hora de Caracas)",
+         f"**{panel['nombre']}**{' · consulta individual' if s['individual'] else ''} · {_fecha(s['abierta'])} · de {_hora(s['abierta'])} a {_hora(cierre_ts)} (hora de Caracas)",
          "", "## Asunto", s["asunto"], "", "## Asistentes",
          "- **La presidencia** (consultante), que convoca y dirige la sesión."]
     L += [f"- **{nombres[i]['nombre']}**, {nombres[i]['rol'] or 'experto'}"

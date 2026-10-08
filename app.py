@@ -304,7 +304,8 @@ def preguntar(pid):
     texto = (request.form.get("texto") or "").strip()
     destinatario = (request.form.get("destinatario") or "").strip() or None
     with bd.db() as c:
-        if destinatario and destinatario not in {a["id"] for a in _panel(c, pid)["agentes"]}:
+        ind_form = (request.form.get("individual") or "").strip()
+        if (destinatario or ind_form) and not {destinatario or ind_form} <= {a["id"] for a in _panel(c, pid)["agentes"]}:
             return jsonify(error="Ese experto no está en este consejo"), 400
     imagenes, documentos = [], []
     for f in request.files.getlist("imagenes"):
@@ -352,10 +353,15 @@ def preguntar(pid):
             os.remove(os.path.join(config.IMG, n))
         return jsonify(error=str(e)), 502
     with bd.db() as c:
-        s = sesiones.activa(c, pid)   # sin sesión abierta, consultar abre una con la pregunta como asunto
+        # consulta individual (despacho): su propia sesión, aparte de la del panel
+        individual = (request.form.get("individual") or "").strip() or None
+        if individual:
+            destinatario = individual
+        s = sesiones.activa(c, pid, individual)   # sin sesión abierta, consultar abre una con la pregunta como asunto
         if s and s["receso"]:
             return jsonify(error="La sesión está en cuarto intermedio: reanúdela para continuar"), 409
-        sid = s["id"] if s else sesiones.abrir(c, pid, texto[:120] or (adjuntos[0]["nombre"] if adjuntos else "Consulta al Consejo"))
+        sid = s["id"] if s else sesiones.abrir(c, pid, texto[:120] or (adjuntos[0]["nombre"] if adjuntos else "Consulta al Consejo"),
+                                               individual=individual)
         punto = (s["punto"] or 0) if s else 0
         cur = c.execute("INSERT INTO mensajes(panel_id,rol,texto,imagenes,adjuntos,ronda,ts,sesion_id,destinatario,punto) "
                         "VALUES(?,?,?,?,?,0,?,?,?,?)",
@@ -705,48 +711,100 @@ def solicitudes(qid):
     return jsonify(piden=piden, oradores=oradores)
 
 
-# ---- consultor general (fuera del hemiciclo) ----------------------------------------
-SISTEMA_CONSULTOR = (
-    "Eres el Consultor General del Consejo: un asesor interno, neutral y erudito, que no forma parte del "
-    "debate. Aclaras el significado de palabras, conceptos, siglas, términos técnicos o jurídicos, nombres y "
-    "referencias que aparecen en las deliberaciones. No opinas sobre el asunto que se debate ni recomiendas "
-    "decisiones. Respondes en español, en un máximo de 160 palabras, con este orden:\n"
-    "**Definición:** … (si es ambiguo, las acepciones principales)\n"
-    "**En este contexto:** … (solo si se te da un pasaje o un asunto)\n"
-    "**Ejemplo:** …\n**Relacionados:** 2 a 4 términos.\n"
-    "Si no conoces el término con certeza o puede haber cambiado (normas, cifras, cargos), dilo con claridad.")
+# ---- asistente (antes «consultor general»): fuera del hemiciclo -----------------------
+GUIA = """GUÍA DE EL CONSEJO (cómo funciona):
+- Tres ambientes: CONSULTA DE PANEL (un consejo de 4-12 expertos en hemiciclo responde a una consulta), ASAMBLEA
+  GENERAL (debate entre varios comités/paneles con derecho de palabra parlamentario) y CONSULTA INDIVIDUAL (despacho
+  con un solo experto, a solas; su sesión va aparte de la del panel). Se eligen en el menú principal.
+- Sesiones: cada asunto se trata en una sesión numerada (Iniciar sesión o, al consultar, se abre sola). Tiene asunto,
+  orden del día opcional con varios puntos, orden del debate (por turnos: cada experto oye a los anteriores; o
+  simultáneo) y actas anexas de otras sesiones. Registro de todas en «Sesiones».
+- Respuestas en tiempo real; «Deliberación entre expertos» añade 1-3 rondas de réplica en las que cada uno lee a los
+  demás. Desde la ficha de un experto se le puede hacer una consulta individual.
+- Deliberar acuerdo: «acuerdo unificado» (la Secretaría, una IA neutral, redacta una propuesta; se aprueba si nadie
+  vota en contra; si no, se revisa con las objeciones) o «mayoría simple» entre alternativas (empate: voto de calidad de
+  la presidencia). Pantalla de votación con el voto y el motivo de cada experto.
+- Acta de cierre: datos objetivos compuestos por el sistema y síntesis de la Secretaría; se descarga en PDF/Word con
+  membrete y se puede llevar a otro consejo para deliberarla o anexarla.
+- Asamblea: se convocan comités y delegados (por defecto un portavoz), tiempo de palabra en palabras, ronda de
+  posiciones; luego lista de oradores: conceder la palabra, «Solicitudes» (cada delegado decide si pide la palabra o
+  plantea una cuestión de orden), réplicas por alusiones automáticas, mociones (cierre del debate, siguiente punto,
+  limitar el tiempo, cuarto intermedio), cronómetro y retirar la palabra.
+- Bibliotecas: cada experto consulta su biblioteca propia, la común de su consejo y la general; se suben PDF/DOCX/TXT
+  que se dividen en capítulos, se resumen e indexan, y el experto cita documento y capítulo.
+- Consumo (barra superior): tokens, contexto y coste aproximado por experto y total; tope de gasto en Ajustes.
+- Ajustes: acceso (presidencia/observador), membrete de las actas, proveedores de IA por experto, tope de gasto y
+  copias de seguridad. Estadísticas: actividad, acuerdos, expertos más activos y disidentes, gasto.
+- Los expertos son modelos de IA: conocen la fecha de hoy pero pueden tener datos desactualizados; conviene
+  verificar normas y cifras en fuentes oficiales o cargarlas en las bibliotecas."""
 
 
-@app.post("/api/consultor")
-def consultor():
+def catalogo(c):
+    lineas = []
+    for r in c.execute("SELECT * FROM paneles WHERE COALESCE(tipo,'')<>'asamblea' ORDER BY orden"):
+        ags = json.loads(r["agentes"] or "[]")
+        lineas.append(f"- {r['nombre']}: {r['descripcion'] or ''} Expertos: " + "; ".join(f"{a['nombre']} ({a['rol']})" for a in ags))
+    return "\n".join(lineas)
+
+
+SISTEMA_ASISTENTE = (
+    "Eres el Asistente de El Consejo, un asesor interno al servicio de la presidencia, fuera del hemiciclo. Tus funciones: "
+    "1) explicar cómo funciona El Consejo por dentro, ateniéndote a la GUÍA (no inventes funciones que no estén en ella); "
+    "2) recomendar el ambiente (consulta de panel, Asamblea General o consulta individual), los paneles o comités y los "
+    "expertos más adecuados para un caso, usando el CATÁLOGO (nombres exactos); 3) aclarar palabras, conceptos y siglas; "
+    "4) ordenar el planteamiento de una consulta antes de presentarla. No opinas sobre el fondo del asunto ni lo resuelves: "
+    "ayudas a plantearlo bien y a elegir a quién preguntar. Respondes en español, claro y breve (máximo 220 palabras salvo "
+    "que se pida detalle), con negritas para lo importante. Cuando recomiendes un panel, comités o un experto concretos, "
+    "termina con un bloque ```json {\"ambiente\": \"panel|asamblea|individual\", \"paneles\": [\"nombre exacto\"], "
+    "\"experto\": \"nombre exacto o null\"}```.")
+
+MODOS_ASISTENTE = {
+    "termino": "Aclara el término con este formato: **Definición:** … (acepciones si es ambiguo) · **En este contexto:** … (si "
+               "hay pasaje) · **Ejemplo:** … · **Relacionados:** 2 a 4 términos. Si no lo conoces con certeza, dilo.",
+    "ordenar": "Ordena este planteamiento para presentarlo al Consejo. Devuelve: **Planteamiento:** reformulado con contexto, "
+               "la pregunta concreta y lo que se espera de los expertos (máximo 120 palabras); **Orden del día:** de 1 a 4 "
+               "puntos si conviene; **Recomendación:** ambiente, panel o comités y 2-3 expertos clave, con el porqué. "
+               "Si recomiendas expertos de VARIOS paneles, el ambiente es «asamblea» con esos paneles como comités (en una consulta de "
+               "panel solo intervienen los de un panel). Termina SIEMPRE con un bloque ```json {\"planteamiento\": \"…\", \"orden_dia\": [\"…\"], \"ambiente\": "
+               "\"panel|asamblea|individual\", \"paneles\": [\"nombre exacto\"], \"experto\": \"nombre exacto o null\"}```.",
+}
+
+
+@app.post("/api/asistente")
+@app.post("/api/consultor")   # nombre anterior
+def asistente():
     d = request.get_json(force=True)
-    pregunta = (d.get("pregunta") or "").strip()[:500]
+    pregunta = (d.get("pregunta") or "").strip()[:2000]
     if not pregunta:
-        return jsonify(error="Escriba la palabra o el concepto que quiere aclarar"), 400
+        return jsonify(error="Escriba su consulta para el Asistente"), 400
+    modo = d.get("modo") if d.get("modo") in MODOS_ASISTENTE else None
     contexto = (d.get("contexto") or "").strip()[:1200]
     panel = sesion_r = None
-    if d.get("panel_id"):
-        with bd.db() as c:
+    with bd.db() as c:
+        if d.get("panel_id"):
             r = c.execute("SELECT * FROM paneles WHERE id=?", (d["panel_id"],)).fetchone()
             panel = panel_dict(c, r) if r else None
             sesion_r = sesiones.activa(c, panel["id"]) if panel else None
-    datos = []
+        cat = catalogo(c)
+    datos = [f"Ambiente actual: {d.get('ambiente') or 'menú principal'}"]
     if panel:
-        datos.append(f"Consejo: {panel['nombre']}")
+        datos.append(f"Consejo abierto: {panel['nombre']}")
     if sesion_r:
-        datos.append(f"Asunto de la sesión: {sesion_r['asunto']}")
+        datos.append(f"Asunto de la sesión en curso: {sesion_r['asunto']}")
     if contexto:
         datos.append(f"Pasaje donde aparece: «{contexto}»")
-    msgs = [{"role": "system", "content": f"{SISTEMA_CONSULTOR}\n\nHoy es {fecha_actual()}."},
-            {"role": "user", "content": ("\n".join(datos) + "\n\n" if datos else "") + f"Consulta: {pregunta}"}]
+    instruccion = MODOS_ASISTENTE.get(modo, "")
+    msgs = [{"role": "system", "content": f"{SISTEMA_ASISTENTE}\n\nHoy es {fecha_actual()}.\n\n{GUIA}\n\nCATÁLOGO DE PANELES:\n{cat}"},
+            {"role": "user", "content": "\n".join(datos) + "\n\n" + (instruccion + "\n\n" if instruccion else "")
+             + ("Planteamiento: " if modo == "ordenar" else "Consulta: ") + pregunta}]
 
     def gen():
         partes, uso, fallo = [], {}, None
         try:
-            for x in ia.llamar_flujo(msgs, temperatura=0.3, max_tokens=450, uso=uso):
+            for x in ia.llamar_flujo(msgs, temperatura=0.3, max_tokens=900 if modo == "ordenar" else 700, uso=uso):
                 partes.append(x)
                 yield _linea(t="d", x=x)
-            consumo.registrar(panel["id"] if panel else None, None, None, "consultor", uso)
+            consumo.registrar(panel["id"] if panel else None, None, None, "asistente", uso)
         except Exception as e:  # noqa: BLE001
             fallo = str(e)[:400]
         yield _linea(t="fin", texto="".join(partes).strip(), error=fallo if not partes else None)

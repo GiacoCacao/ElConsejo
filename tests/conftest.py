@@ -45,7 +45,11 @@ def falsos(monkeypatch):
             uso.update(modelo=modelo or "deepseek-flash", entrada=1000, salida=200, cache=400, estimado=False)
         sis = msgs[0]["content"]
         ult = msgs[-1]["content"] if isinstance(msgs[-1]["content"], str) else msgs[-1]["content"][0]["text"]
-        if "Consultor General" in sis:
+        if "Asistente de El Consejo" in sis:
+            if "Ordena este planteamiento" in ult:
+                return ('**Planteamiento:** ¿Conviene abrir una sucursal en Valencia en 2027?\n'
+                        '```json\n{"planteamiento": "¿Conviene abrir una sucursal en Valencia en 2027?", '
+                        '"orden_dia": ["Mercado", "Financiación"], "ambiente": "panel", "paneles": ["Panel Empresarial"], "experto": null}\n```')
             return "**Definición:** revisión previa a una operación.\n**Relacionados:** auditoría."
         if sis.startswith("Eres la Secretaría"):
             if "ALTERNATIVAS" in ult:

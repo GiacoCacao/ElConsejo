@@ -32,7 +32,8 @@
     <div id="menuPaneles" class="menu" hidden role="menu"></div>
   </div>
   <div class="acciones">
-    <button id="abrirConsultor" class="enlace" data-i="lupa" title="Consultor general: aclara palabras, conceptos y siglas sin intervenir en el debate">Consultor</button>
+    <button id="irInicio" class="enlace" data-i="inicio" title="Menú principal">Inicio</button>
+    <button id="abrirConsultor" class="enlace" data-i="asistente" title="Asistente: explica cómo funciona El Consejo, recomienda paneles y expertos, ordena su planteamiento y aclara conceptos">Asistente</button>
     <button id="abrirPools" class="enlace" data-i="libros" title="Bibliotecas de conocimiento (pools) de cada experto">Bibliotecas</button>
     <button id="abrirSesiones" class="enlace" data-i="sesiones" title="Registro de sesiones y actas de cierre">Sesiones</button>
     <button id="historial" class="enlace" data-i="actas" title="Transcripción de la sesión en curso">Transcripción</button>
@@ -45,7 +46,8 @@
 
 <main id="escena">
   <div id="fondo" aria-hidden="true"></div>
-  <a class="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
+  <a class="credito" id="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
+  <section id="inicio" class="inicio" hidden aria-label="Menú principal"></section>
   <button id="consumo" class="consumo" type="button" title="Consumo de la API y costes aproximados — pulse para ver el detalle" hidden>
     <span class="c-svc"><i class="led"></i><span id="cSvc"></span></span>
     <span class="c-blq"><span class="rot">Contexto</span><span class="medidor"><i id="cCtxBar"></i></span><span id="cCtx" class="val"></span></span>
@@ -217,17 +219,22 @@
 
 <dialog id="consultor" class="consultor" aria-label="Consultor general">
   <div class="cab">
-    <div><div class="sobre">Asesoría interna · fuera del debate</div><h2>Consultor general</h2></div>
+    <div><div class="sobre">Asesoría interna · fuera del debate</div><h2>Asistente</h2></div>
     <span class="grow"></span>
     <button type="button" id="consLimpiar" class="enlace peq" title="Borrar el historial de consultas">Limpiar</button>
     <button type="button" id="cerrarConsultor" class="icono" data-i="x" aria-label="Cerrar"></button>
   </div>
   <div id="consHist" class="cons-hist"></div>
+  <div class="cons-rapidas" id="consRapidas">
+    <button type="button" data-r="como">¿Cómo funciona El Consejo?</button>
+    <button type="button" data-r="recomendar">¿A quién consulto?</button>
+    <button type="button" data-r="ordenar">Ordenar mi planteamiento</button>
+  </div>
   <form id="consForm" class="cons-form" autocomplete="off">
     <div id="consCtx" class="cons-ctx" hidden></div>
     <div class="campo">
-      <input id="consPregunta" maxlength="500" placeholder="¿Qué palabra o concepto quiere aclarar?">
-      <button type="submit" class="dorado" id="consEnviar"><span class="etq">Consultar</span></button>
+      <input id="consPregunta" maxlength="2000" placeholder="Pregunte al Asistente…">
+      <button type="submit" class="dorado" id="consEnviar"><span class="etq">Preguntar</span></button>
     </div>
   </form>
 </dialog>
@@ -274,6 +281,17 @@
   <div id="estTip" class="est-tip" hidden></div>
 </dialog>
 
+<dialog id="dlgExperto" class="modal ancho">
+  <div class="cab">
+    <div><div class="sobre">Consulta individual</div><h2>Elija un experto</h2></div>
+    <span class="grow"></span>
+    <button type="button" class="icono" data-i="x" data-cierra="dlgExperto" aria-label="Cerrar"></button>
+  </div>
+  <p class="nota">La consulta es a solas, en su despacho: el resto del consejo no la oye. Cada experto conserva su biblioteca y su modelo.</p>
+  <input id="buscaExperto" class="busca" placeholder="Buscar por nombre, especialidad o consejo…" autocomplete="off">
+  <div id="listaExpertos" class="lista-expertos"></div>
+</dialog>
+
 <dialog id="confirmar" class="modal estrecho">
   <div class="sobre">Confirmación</div>
   <p id="confirmarTexto"></p>
@@ -290,5 +308,6 @@
 <script src="/static/consultor.js"></script>
 <script src="/static/asamblea.js"></script>
 <script src="/static/estadisticas.js"></script>
+<script src="/static/ambientes.js"></script>
 </body>
 </html>

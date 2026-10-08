@@ -18,6 +18,24 @@ expertos repliquen entre sí y dar a cada agente su propia **biblioteca** (pool)
   **indexa** (SQLite FTS5 + búsqueda semántica de la fábrica). Al responder, el agente recibe solo los
   capítulos pertinentes y cita de qué documento y capítulo sale cada dato.
 
+## Menú principal y ambientes
+
+Al entrar se abre el **menú principal** con los tres ambientes, cada uno con su sala:
+
+- **Asamblea General** (salón de la Asamblea General de la ONU): debate entre comités.
+- **Consulta de panel** (sala del Consejo de Seguridad): un consejo responde, delibera y vota.
+- **Consulta individual** (despacho con vistas a Manhattan): a solas con el experto que se elija, de cualquier
+  consejo; su sesión va aparte de la del panel.
+
+Además, accesos al Asistente, Sesiones (con las que están en curso), Bibliotecas, Estadísticas y Ajustes.
+
+## Asistente
+
+Asesor interno fuera del hemiciclo (antes «Consultor general»). Conoce cómo funciona El Consejo y el catálogo de
+paneles y expertos: explica el funcionamiento, **recomienda** ambiente, panel o expertos para un caso, **ordena el
+planteamiento** antes de consultar (planteamiento reformulado, orden del día y recomendación, con un botón «Llevar al
+Consejo» que abre el ambiente con todo preparado) y aclara términos seleccionados en cualquier respuesta o acta.
+
 ## Asamblea General
 
 Consejo especial donde varios comités (los paneles) debaten un asunto. Al convocarla se eligen los comités
@@ -157,6 +175,12 @@ No incluye autenticación: pensado para una red privada (p. ej. Tailscale).
 
 ## Créditos
 
+- Asamblea General: *United Nations General Assembly 2024*, foto de
+  [Mojnsen](https://commons.wikimedia.org/wiki/File:United_Nations_General_Assembly_2024.jpg),
+  licencia [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). Adaptada (recortada, virada y oscurecida);
+  `static/asamblea.jpg` se distribuye bajo la misma licencia.
+- Despacho: composición propia sobre *NYC Dusk*, foto de John Dillenbeck
+  ([Wikimedia Commons](https://commons.wikimedia.org/wiki/File:NYC_Dusk.jpg), dominio público).
 - Fondo: *United Nations Headquarters — Security Council chamber, straight-on view*, foto de
   [Jdforrester](https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg),
   licencia [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Adaptada: recortada, virada a tonos cálidos y oscurecida.

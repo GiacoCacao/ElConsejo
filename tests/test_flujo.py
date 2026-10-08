@@ -48,6 +48,40 @@ def test_consultor_general(cliente, falsos):
     ev = _lineas(r)
     assert ev[-1]["t"] == "fin" and ev[-1]["error"] is None
     sistema, usuario = llamadas[-1][0]["content"], llamadas[-1][1]["content"]
-    assert "Consultor General" in sistema and "Hoy es" in sistema
+    assert "Asistente de El Consejo" in sistema and "Hoy es" in sistema
+    assert "GUÍA DE EL CONSEJO" in sistema and "Panel Jurídico" in sistema   # sabe cómo funciona y qué paneles hay
     assert "due diligence" in usuario and "Consejo de ejemplo" in usuario and "Pasaje" in usuario
     assert cliente.post("/api/consultor", json={"pregunta": " "}).status_code == 400
+
+
+def test_asistente_ordena_el_planteamiento(cliente, falsos):
+    llamadas, _ = falsos
+    r = cliente.post("/api/asistente", json={"pregunta": "quiero ver lo de la sucursal en valencia", "modo": "ordenar",
+                                             "ambiente": "menú principal"})
+    ev = _lineas(r)
+    assert '"paneles": ["Panel Empresarial"]' in ev[-1]["texto"]
+    assert "Ordena este planteamiento" in llamadas[-1][1]["content"] and "Planteamiento: quiero ver" in llamadas[-1][1]["content"]
+
+
+def test_consulta_individual_con_su_propia_sesion(cliente, falsos):
+    p = _panel(cliente, "Panel Financiero")
+    s = cliente.get(f"/api/paneles/{p['id']}/sesion").get_json()["sesion"]
+    if s:
+        cliente.post(f"/api/sesiones/{s['id']}/cerrar")
+    # sesión de grupo abierta en el panel
+    g = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "Pregunta al pleno"}, content_type="multipart/form-data").get_json()
+    a = p["agentes"][0]
+    # consulta individual en el despacho: abre su propia sesión, aparte
+    i = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "Solo para ti", "individual": a["id"]},
+                     content_type="multipart/form-data").get_json()
+    assert i["sesion_id"] != g["sesion_id"] and i["destinatario"] == a["id"]
+    ind = cliente.get(f"/api/paneles/{p['id']}/sesion?individual={a['id']}").get_json()["sesion"]
+    assert ind["individual"] == a["id"] and ind["orden"] == [a["id"]]
+    assert cliente.get(f"/api/paneles/{p['id']}/sesion").get_json()["sesion"]["id"] == g["sesion_id"]
+    cliente.post(f"/api/preguntas/{i['pregunta_id']}/agentes/{a['id']}")
+    acta = cliente.post(f"/api/sesiones/{ind['id']}/cerrar").get_json()["acta"]
+    assert "consulta individual" in acta and acta.count("— ") >= 0
+    asistentes = acta.split("## Asistentes")[1].split("##")[0]
+    assert a["nombre"] in asistentes and p["agentes"][1]["nombre"] not in asistentes
+    reg = cliente.get("/api/sesiones").get_json()
+    assert any(x["id"] == ind["id"] and x["experto"] == a["nombre"] for x in reg)
