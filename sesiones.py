@@ -145,7 +145,7 @@ def transcripcion(c, sid, panel, tope=24000, punto=None):
         if punto is not None and (m["punto"] or 0) != punto:
             continue
         if m["rol"] == "user":
-            a_quien = f" (consulta individual a {solo.get(m['destinatario'], 'un experto')})" if m["destinatario"] else ""
+            a_quien = f" (pregunta directa a {solo.get(m['destinatario'], 'un experto')})" if m["destinatario"] else ""
             lineas.append(f"\n**Consulta de la presidencia{a_quien}:** {m['texto'] or '(documentos o imágenes adjuntos)'}")
         else:
             quien = nombres.get(m["agente_id"], "Experto retirado")

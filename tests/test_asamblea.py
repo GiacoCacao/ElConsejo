@@ -44,20 +44,23 @@ def test_parametros_que_otras_apis_rechazan():
     assert not ia._ajustar(cuerpo, "invalid api key")
 
 
-def test_consulta_individual(cliente, falsos):
+def test_pregunta_directa_en_sala_la_oye_el_resto(cliente, falsos):
     llamadas, _ = falsos
     p = _paneles(cliente)["Panel Financiero"]
     a, b = p["agentes"][0], p["agentes"][1]
-    q = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "Pregunta solo para ti", "destinatario": a["id"]},
+    q = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "Pregunta para ti", "destinatario": a["id"]},
                      content_type="multipart/form-data").get_json()
     assert q["destinatario"] == a["id"]
+    llamadas.clear()
     cliente.post(f"/api/preguntas/{q['pregunta_id']}/agentes/{a['id']}")
-    q2 = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "Ahora al pleno"},
+    assert "directamente a ti" in llamadas[0][0]["content"]
+    q2 = cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "¿Qué opinan?"},
                       content_type="multipart/form-data").get_json()
+    assert q2["sesion_id"] == q["sesion_id"]                       # misma sesión: no se va al despacho
     llamadas.clear()
     cliente.post(f"/api/preguntas/{q2['pregunta_id']}/agentes/{b['id']}")
     vistos = " ".join(m["content"] for m in llamadas[0][1:] if isinstance(m["content"], str))
-    assert "Ahora al pleno" in vistos and "Pregunta solo para ti" not in vistos   # b no oyó la consulta privada
+    assert "preguntó directamente a" in vistos and "Pregunta para ti" in vistos and f"Respuesta de {a['nombre'].split()[0]}" in vistos
     assert cliente.post(f"/api/paneles/{p['id']}/preguntas", data={"texto": "x", "destinatario": "nadie"},
                         content_type="multipart/form-data").status_code == 400
 

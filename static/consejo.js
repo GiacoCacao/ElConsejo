@@ -319,7 +319,7 @@ function pintarMesa() {
       <div><div class="quien">${esc(a.nombre)}</div><div class="rol">${esc(a.rol || 'Experto')}</div>${gastoAgente(a.id)}</div>
       <div class="nav">${!document.body.classList.contains('observador') ? `${panel.tipo === 'asamblea' && sesion && qActual
           ? `<button class="contorno peq palabra" data-palabra title="Conceder la palabra a ${esc(a.nombre)}">${ico('mazo')}<span>Conceder la palabra</span></button>` : ''}
-        <button class="icono" data-ind title="Consulta individual a ${esc(a.nombre)}">${ico('persona')}</button>` : ''}
+        ${enDespacho() ? '' : `<button class="icono" data-ind title="Pregunta directa a ${esc(a.nombre)}: responde él y el resto del consejo escucha">${ico('persona')}</button>`}` : ''}
         <button class="icono" data-mv="-1" aria-label="Experto anterior">${ico('izq')}</button><button class="icono" data-mv="1" aria-label="Experto siguiente">${ico('der')}</button></div>
     </header><div class="cuerpo">`;
   for (const m of suyos) {
@@ -349,6 +349,17 @@ function pintarMesa() {
   };
   const bp = r.querySelector('[data-palabra]'); if (bp) bp.onclick = () => concederPalabra(a.id, 'palabra');
   if (suyos.some(m => m.error)) r.classList.add('error');
+  // tras una pregunta directa, el resto del consejo puede opinar sobre lo dicho
+  const q = msgs.find(m => m.rol === 'user' && m.pregunta_id === qActual);
+  if (q && q.destinatario === a.id && !enDespacho() && suyos.some(m => !m.error) && !estado[a.id]?.startsWith?.('h')
+      && panel.agentes.length > 1 && !document.body.classList.contains('observador') && !$('#enviar').disabled) {
+    r.insertAdjacentHTML('beforeend', `<div class="opinen"><span>${esc(a.nombre)} ha respondido ante el consejo.</span>
+      <button type="button" class="contorno peq" id="opinen">${ico('sesiones')}<span>Que opine el consejo</span></button></div>`);
+    $('#opinen').onclick = () => {
+      $('#texto').value = `Acaban de escuchar la respuesta de ${a.nombre} a la pregunta directa de la presidencia. ¿Qué opinan al respecto? Indiquen en qué coinciden, en qué discrepan y qué añadirían desde su especialidad.`;
+      destinoInd = null; pintarDestino(); $('#chat').requestSubmit();
+    };
+  }
 }
 
 function pintarRegistro() {
@@ -363,7 +374,7 @@ function pintarRegistro() {
     const hora = new Date(m.ts * 1000).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
     const dest = m.destinatario && panel.agentes.find(x => x.id === m.destinatario);
     const etq = m.modo ? (m.modo === 'alusion' ? 'por alusiones · ' : 'en uso de la palabra · ') : m.ronda ? 'réplica ' + ROMANO(m.ronda) + ' · ' : '';
-    d.innerHTML = `<div class="q"><b>${m.rol === 'user' ? (dest ? 'Consulta individual a ' + esc(dest.nombre) : 'Consulta') : esc(a ? a.nombre : 'Experto')}</b><span>${a && a.comite ? esc(a.comite) + ' · ' : ''}${etq}${hora}</span></div>`
+    d.innerHTML = `<div class="q"><b>${m.rol === 'user' ? (dest ? 'Pregunta directa a ' + esc(dest.nombre) : 'Consulta') : esc(a ? a.nombre : 'Experto')}</b><span>${a && a.comite ? esc(a.comite) + ' · ' : ''}${etq}${hora}</span></div>`
       + (m.rol === 'user' ? `<p>${esc(m.texto)}</p>` : `<div class="cuerpo">${md(m.texto)}</div>`)
       + (m.adjuntos.length ? `<div class="adjuntos-msg">${m.adjuntos.map(x => `<span class="ficha">${ico('doc')}${esc(x.nombre)}</span>`).join('')}</div>` : '')
       + m.imagenes.map(i => `<img src="/img/${i}" alt="">`).join('');
@@ -446,16 +457,14 @@ function pintarDestino() {
   if (!a) destinoInd = null;
   const d = $('#destino');
   d.hidden = !a;
-  d.innerHTML = a ? `${ico('persona')}<span>Consulta individual a <b>${esc(a.nombre)}</b> · solo este experto la oirá</span>
+  d.innerHTML = a ? `${ico('persona')}<span>Pregunta directa a <b>${esc(a.nombre)}</b> · responde él; el resto del consejo escucha</span>
     <button type="button" aria-label="Volver al pleno">${ico('x')}</button>` : '';
   if (a) d.querySelector('button').onclick = () => { destinoInd = null; pintarDestino(); };
   $('#texto').placeholder = enDespacho() && panel.agentes[0] ? `Su consulta a ${panel.agentes[0].nombre}…`
-    : a ? `Consulta individual a ${a.nombre}…` : (innerWidth < 760 ? 'Su consulta…' : 'Plantee su consulta al Consejo…');
+    : a ? `Pregunta directa a ${a.nombre}…` : (innerWidth < 760 ? 'Su consulta…' : 'Plantee su consulta al Consejo…');
 }
-function consultaIndividual(id) {   // al despacho del experto (ambiente de consulta individual)
-  if (typeof irA === 'function') irA('individual', { panel: panel.id, agente: id });
-  else { destinoInd = id; pintarDestino(); $('#texto').focus(); }
-}
+// pregunta directa en la sala: responde ese experto y el resto lo escucha (no es el despacho privado)
+function consultaIndividual(id) { destinoInd = id; pintarDestino(); $('#texto').focus(); }
 
 $('#chat').onsubmit = async e => {
   e.preventDefault();

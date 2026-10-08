@@ -80,7 +80,8 @@ consejo. Filtros por periodo y consejo, detalle al pasar el ratón y vista de ta
 
 ## Consultas individuales y proveedores de IA
 
-- **Consulta individual**: desde la ficha de un experto, la pregunta va solo a él; los demás no la oyen.
+- **Pregunta directa** (en la sala): desde la ficha de un experto, la pregunta va a él en presencia del resto, que la
+  oye y puede opinar después con «Que opine el consejo». La conversación privada es la consulta individual (despacho).
 - **Proveedores de IA por experto**: en Ajustes se registran otras APIs compatibles con OpenAI (OpenAI,
   Anthropic, Gemini, Mistral, Groq, OpenRouter, xAI, Ollama…) con su clave, que se guarda cifrada con
   `CONSEJO_SECRETO` y no vuelve al navegador. Cada experto elige proveedor y modelo en Configurar. Si una API

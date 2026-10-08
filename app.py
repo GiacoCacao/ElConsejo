@@ -445,12 +445,23 @@ def _mensajes_ia(c, panel, agente, qid, ronda, modo=None, por=None):
         if m["rol"] == "agent" and m["agente_id"] == agente["id"] and not m["error"]:
             if m["pregunta_id"] not in ultimas or (m["ronda"] or 0) >= (ultimas[m["pregunta_id"]]["ronda"] or 0):
                 ultimas[m["pregunta_id"]] = m
-    # las consultas individuales a otro experto no forman parte de lo que este ha oído
-    usuarios = [m for m in previos if m["rol"] == "user" and m["destinatario"] in (None, agente["id"])][-config.HISTORIAL:]
+    # las preguntas directas a otro experto se hacen en sala: este las ha oído, con su respuesta
+    nombres_ag = {a["id"]: a["nombre"] for a in panel["agentes"]}
+    usuarios = [m for m in previos if m["rol"] == "user"][-config.HISTORIAL:]
     for u in usuarios:
+        if u["destinatario"] and u["destinatario"] != agente["id"]:
+            quien = nombres_ag.get(u["destinatario"], "un colega")
+            resp = c.execute("SELECT texto FROM mensajes WHERE pregunta_id=? AND rol='agent' AND agente_id=? AND error=0 "
+                             "ORDER BY id DESC LIMIT 1", (u["id"], u["destinatario"])).fetchone()
+            msgs.append({"role": "user", "content": f"(En la sala, la presidencia preguntó directamente a {quien}: "
+                         f"«{_contenido_usuario(c, u, False)}»" + (f" — {quien} respondió: «{resp['texto']}»)" if resp else ")")})
+            continue
         msgs.append({"role": "user", "content": _contenido_usuario(c, u, False)})
         if u["id"] in ultimas:
             msgs.append({"role": "assistant", "content": ultimas[u["id"]]["texto"]})
+    if q["destinatario"] == agente["id"] and not (ses and ses["individual"]):
+        msgs[0]["content"] += ("\n\nLa presidencia te dirige esta pregunta directamente a ti, en presencia del resto del consejo, "
+                               "para profundizar en tu postura. Responde tú; tus colegas te escuchan y podrán opinar después.")
     msgs.append({"role": "user", "content": _contenido_usuario(c, q, True)})
 
     # debate por turnos: quien habla después oye a quienes ya intervinieron en esta misma ronda
@@ -720,7 +731,8 @@ GUIA = """GUÍA DE EL CONSEJO (cómo funciona):
   orden del día opcional con varios puntos, orden del debate (por turnos: cada experto oye a los anteriores; o
   simultáneo) y actas anexas de otras sesiones. Registro de todas en «Sesiones».
 - Respuestas en tiempo real; «Deliberación entre expertos» añade 1-3 rondas de réplica en las que cada uno lee a los
-  demás. Desde la ficha de un experto se le puede hacer una consulta individual.
+  demás. Desde la ficha de un experto se le hace una «pregunta directa» en la sala: responde él, el resto lo oye y
+  luego puede opinar («Que opine el consejo»). La conversación privada es la consulta individual (despacho).
 - Deliberar acuerdo: «acuerdo unificado» (la Secretaría, una IA neutral, redacta una propuesta; se aprueba si nadie
   vota en contra; si no, se revisa con las objeciones) o «mayoría simple» entre alternativas (empate: voto de calidad de
   la presidencia). Pantalla de votación con el voto y el motivo de cada experto.

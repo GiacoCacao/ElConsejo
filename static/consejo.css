@@ -723,6 +723,9 @@ body.amb-inicio .selector{visibility:hidden}
 .rec .sobre{margin-bottom:6px}
 .rec .acciones-rec{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 
+.opinen{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:14px;border-top:1px dashed var(--linea)}
+.opinen span{flex:1;font:italic 15px var(--serif);color:var(--humo)}
+
 /* ---- avisos ---- */
 #avisos{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:50;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .aviso-t{background:#14161d;border:1px solid var(--linea-fuerte);border-left:2px solid var(--oro);padding:11px 18px;font-size:13px;color:var(--marfil);
