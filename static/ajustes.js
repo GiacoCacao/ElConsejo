@@ -62,13 +62,19 @@ function formProveedor(p, plantillas) {
       <label class="fld">Dirección (base de la API)<input data-k="url" value="${esc(p ? p.url : '')}" placeholder="https://api.openai.com/v1"></label>
       <label class="fld">Modelo por defecto<input data-k="modelo" value="${esc(p ? p.modelo : '')}" placeholder="nombre-del-modelo"></label>
     </div>
-    <label class="fld">Clave de la API <small>— ${p ? 'déjela vacía para conservar la actual' : 'se guarda cifrada'}</small><input data-k="clave" type="password" autocomplete="new-password" placeholder="${p ? 'sin cambios' : 'sk-…'}"></label>
+    <label class="fld">Clave de la API <small>— ${p ? 'déjela vacía para conservar la actual' : 'se guarda cifrada'}</small><span class="clave-caja"><input data-k="clave" type="password" autocomplete="new-password" placeholder="${p ? 'sin cambios' : 'sk-…'}">
+      <button type="button" class="ojo" data-ojo aria-label="Mostrar la clave" aria-pressed="false" title="Mostrar la clave"><svg class="ico" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg></button></span></label>
     <div class="botones"><span class="grow"></span><button type="button" class="enlace" data-c>Cancelar</button>
       <button type="button" class="dorado" data-g><span class="etq">Guardar proveedor</span></button></div>`;
   box.prepend(f);
   const v = k => f.querySelector(`[data-k=${k}]`);
   if (!p) v('plantilla').onchange = e => { const t = plantillas[e.target.value]; if (t) { v('nombre').value = t.nombre; v('url').value = t.url; } };
   f.querySelector('[data-c]').onclick = () => f.remove();
+  f.querySelector('[data-ojo]').onclick = e => {
+    const b = e.currentTarget, i = v('clave'), ver = i.type === 'password';
+    i.type = ver ? 'text' : 'password'; b.setAttribute('aria-pressed', ver);
+    b.querySelector('svg').innerHTML = ver ? '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>' : '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>';
+  };
   f.querySelector('[data-g]').onclick = async () => {
     const cuerpo = { nombre: v('nombre').value, url: v('url').value, modelo: v('modelo').value, clave: v('clave').value };
     try {

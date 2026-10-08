@@ -646,6 +646,11 @@ body.observador .oradores{display:none!important}
 .vacio-g{padding:20px 0;text-align:center}
 .est-tip{position:absolute;z-index:5;pointer-events:none;background:#1b1e27;border:1px solid var(--linea-fuerte);border-radius:2px;padding:6px 10px;font-size:12px;color:var(--marfil);box-shadow:0 10px 30px -10px #000;max-width:240px}
 
+.fld .clave-caja{position:relative;display:block}
+.fld .clave-caja input{padding-right:40px}
+.fld .ojo{position:absolute;right:0;bottom:4px;width:32px;height:32px;justify-content:center;color:var(--humo)}
+.fld .ojo:hover,.fld .ojo[aria-pressed=true]{color:var(--oro-claro)}
+
 /* ---- avisos ---- */
 #avisos{position:fixed;left:50%;top:92px;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .aviso-t{background:#14161d;border:1px solid var(--linea-fuerte);border-left:2px solid var(--oro);padding:11px 18px;font-size:13px;color:var(--marfil);

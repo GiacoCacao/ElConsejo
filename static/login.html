@@ -19,7 +19,12 @@
     font:400 17px var(--sans);padding:10px 2px;text-align:center;letter-spacing:.1em;outline:none;transition:border-color .3s}
   .acceso input:focus{border-color:var(--oro)}
   .acceso input::placeholder{font:italic 18px var(--serif);letter-spacing:0;color:var(--humo)}
-  .acceso button{width:100%;justify-content:center;margin-top:28px}
+  .acceso button[type=submit]{width:100%;justify-content:center;margin-top:28px}
+  .clave-caja{position:relative}
+  .clave-caja input{padding-right:40px;padding-left:40px}
+  .ojo{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:34px;height:34px;justify-content:center;color:var(--humo);border-radius:50%;transition:color .2s}
+  .ojo:hover,.ojo[aria-pressed=true]{color:var(--oro-claro)}
+  .ojo svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
   .acceso .error{min-height:20px;margin-top:14px;font-size:12.5px;color:var(--rojo)}
   .credito{position:fixed}
 </style>
@@ -30,12 +35,23 @@
   <svg class="sello" viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="22.5"/><circle cx="24" cy="24" r="18.5" class="fino"/><path d="M11 30 A13 13 0 0 1 37 30" class="fino"/><text x="24" y="30.5">C</text></svg>
   <h1>El Consejo</h1>
   <div class="lema">Consejo de expertos</div>
-  <input id="clave" type="password" autocomplete="current-password" placeholder="Clave de acceso" autofocus required>
+  <div class="clave-caja">
+    <input id="clave" type="password" autocomplete="current-password" placeholder="Clave de acceso" autofocus required>
+    <button type="button" class="ojo" id="ojo" aria-label="Mostrar la clave" aria-pressed="false" title="Mostrar la clave"><svg viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+  </div>
   <button class="dorado" type="submit"><span class="etq">Entrar en la sala</span></button>
   <div class="error" id="err" role="alert"></div>
 </form>
 <a class="credito" href="https://commons.wikimedia.org/wiki/File:United_Nations_Headquarters_-_Security_Council_chamber,_straight-on_view.jpg" target="_blank" rel="noopener">Sala del Consejo de Seguridad de la ONU · Foto: Jdforrester, CC BY 4.0 (adaptada)</a>
 <script>
+const OJO = '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>', TACHADO = '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/>';
+document.getElementById('ojo').onclick = () => {
+  const i = document.getElementById('clave'), b = document.getElementById('ojo'), ver = i.type === 'password';
+  i.type = ver ? 'text' : 'password';
+  b.setAttribute('aria-pressed', ver); b.setAttribute('aria-label', ver ? 'Ocultar la clave' : 'Mostrar la clave'); b.title = b.getAttribute('aria-label');
+  b.querySelector('svg').innerHTML = ver ? TACHADO : OJO;
+  i.focus();
+};
 document.getElementById('f').onsubmit = async e => {
   e.preventDefault();
   const b = e.target.querySelector('button'), err = document.getElementById('err');
