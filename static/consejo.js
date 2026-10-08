@@ -163,22 +163,39 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#menuP
 function geometria() {
   const arco = $('#arco'), W = arco.clientWidth, H = arco.clientHeight, n = panel ? panel.agentes.length : 0;
   const movil = W < 760, cx = W / 2;
+  // pantallas de poca altura (portátiles de 1366×768…): arco bajo y ancho arriba, medallones menores
+  const compacto = !movil && H < 720;
+  document.body.classList.toggle('compacto', compacto);
   // escritorio: hemiciclo que abraza el atril; móvil: arco compacto arriba y el atril debajo
-  const cy = movil ? Math.min(H * .36, 240) + 30 : H - 46;   // móvil: deja sitio a la barra de consumo
-  const Rx = movil ? W / 2 - 48 : Math.max(150, W / 2 - 96), Ry = movil ? cy - 92 : Math.max(150, H - 190);
+  // compacto: curva suave arriba (los del centro, altos; los de los extremos, que no chocan con la mesa, algo más abajo)
+  const Ry = movil ? Math.min(H * .36, 240) - 62 : compacto ? Math.min(80, H * .14) : Math.max(150, H - 190);
+  const cy = movil ? Math.min(H * .36, 240) + 30 : compacto ? 84 + Ry : H - 46;   // móvil: deja sitio a la barra de consumo
+  const Rx = movil ? W / 2 - 48 : compacto ? Math.max(150, W / 2 - 100) : Math.max(150, W / 2 - 96);
   const pos = (panel ? panel.agentes : []).map((a, i) => {
+    if (compacto && n > 1) {   // misma separación horizontal, siguiendo la curva: nadie se amontona en los extremos
+      const dx = -0.92 + 1.84 * i / (n - 1), t = Math.acos(dx);
+      return { a, t, x: cx + Rx * dx, y: cy - Ry * Math.sin(t) };
+    }
     const t = n === 1 ? Math.PI / 2 : Math.PI * (0.9 - 0.8 * i / (n - 1));
     return { a, t, x: cx + Rx * Math.cos(t), y: cy - Ry * Math.sin(t) };
   });
   const mesaW = Math.min(700, W * (movil ? .94 : .58)); let top = movil ? 60 : 72;   // nunca bajo la barra de consumo
-  for (const p of pos) if (Math.abs(p.x - cx) < mesaW / 2 + 70) top = Math.max(top, p.y + (movil ? 52 : 118));
-  return { W, H, cx, cy, Rx, Ry, pos, movil, mesaTop: Math.min(top, H - 300) };
+  for (const p of pos) if (Math.abs(p.x - cx) < mesaW / 2 + (compacto ? 40 : 70)) top = Math.max(top, p.y + (movil ? 52 : compacto ? 78 : 118));
+  // la respuesta conserva siempre un alto útil, aunque la mesa tape un poco el arco
+  const chat = ($('#chat') && $('#chat').offsetHeight) || 118;
+  const tope = compacto ? H - chat - 40 - 190 : H - 300;
+  return { W, H, cx, cy, Rx, Ry, pos, movil, compacto, mesaTop: Math.max(60, Math.min(top, tope)) };
 }
 
 function pintarArco() {
   const arco = $('#arco'); arco.innerHTML = '';
   if (!panel) return;
   const g = geometria(), entrada = ultimoPanel !== panel.id; ultimoPanel = panel.id;
+  // con muchos expertos, medallones y rótulos se ajustan a la separación disponible entre vecinos
+  const n = panel.agentes.length, sep = n > 1 ? (g.compacto ? g.Rx * 1.84 / (n - 1) : g.Rx * 0.8 * Math.PI / (n - 1) * 0.7) : 999;
+  arco.style.setProperty('--ancho-ag', Math.max(70, Math.min(g.compacto ? 160 : 184, sep - 10)) + 'px');
+  arco.classList.toggle('apretado', sep < 150);
+  arco.classList.toggle('muy-apretado', sep < 95);
   $('#mesa').style.setProperty('--mesa-top', g.mesaTop + 'px');
   pintarDescripcion();
   g.pos.forEach(({ a, x, y }, i) => {
@@ -207,10 +224,10 @@ function pintarHemiciclo(g) {
     <linearGradient id="gSuelo" x1="0" x2="1"><stop offset="0" stop-color="#c9a96e" stop-opacity="0"/><stop offset=".5" stop-color="#c9a96e" stop-opacity=".45"/><stop offset="1" stop-color="#c9a96e" stop-opacity="0"/></linearGradient>
     <linearGradient id="gEnlace" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e6d3a8" stop-opacity=".9"/><stop offset="1" stop-color="#c9a96e" stop-opacity=".1"/></linearGradient>
   </defs>
-  ${g.movil ? '' : `<path class="arcoS" d="${arcoE(Rx + 64, Ry + 64)}"/>`}
+  ${g.movil || g.compacto ? '' : `<path class="arcoS" d="${arcoE(Rx + 64, Ry + 64)}"/>`}
   <path class="arcoP" d="${arcoE(Rx, Ry)}"/>
   <path class="arcoS" d="${arcoE(Math.max(40, Rx - 70), Math.max(40, Ry - 70))}"/>
-  ${g.movil ? '' : `<line class="suelo" x1="${W * .08}" y1="${cy}" x2="${W * .92}" y2="${cy}"/>`}`;
+  ${g.movil || g.compacto ? '' : `<line class="suelo" x1="${W * .08}" y1="${cy}" x2="${W * .92}" y2="${cy}"/>`}`;
   for (const p of g.pos) {   // marcas radiales por fuera de cada escaño
     const ux = Math.cos(p.t), uy = -Math.sin(p.t);
     h += `<line class="marcaA" x1="${cx + (Rx + 56) * ux}" y1="${cy + (Ry + 56) * uy}" x2="${cx + (Rx + 70) * ux}" y2="${cy + (Ry + 70) * uy}"/>`;
