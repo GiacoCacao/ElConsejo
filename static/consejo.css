@@ -204,9 +204,10 @@ button:disabled{cursor:default;opacity:.55}
 .interruptor input:checked+.pista{border-color:var(--oro);background:rgba(201,169,110,.15)}
 .interruptor input:checked+.pista::after{left:16px;background:var(--oro-claro)}
 .segmentos{display:inline-flex;align-items:center;gap:2px;flex:none}
-.segmentos .rot{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ceniza);margin-right:8px}
-.segmentos button{font:500 14px/1 var(--serif);width:30px;height:22px;justify-content:center;color:var(--humo);border:1px solid transparent;border-radius:2px}
-.segmentos button.act{border-color:var(--linea-fuerte);color:var(--oro-claro);background:rgba(201,169,110,.08)}
+.segmentos .rot{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--humo);margin-right:8px}
+.segmentos button{font:500 14px/1 var(--serif);width:30px;height:22px;justify-content:center;color:var(--perla);border:1px solid var(--linea);border-radius:2px;transition:all .2s}
+.segmentos button:hover{border-color:var(--oro);color:var(--oro-claro)}
+.segmentos button.act{border-color:var(--oro);color:#16120a;background:linear-gradient(135deg,#e9d7ac,#c9a96e);font-weight:600}
 #adjuntos{display:flex;gap:8px;flex-wrap:wrap}
 #adjuntos:not(:empty){padding:2px 0 10px}
 .ficha{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--linea);border-radius:2px;padding:5px 10px;font-size:12px;color:var(--perla);background:rgba(255,255,255,.02)}
