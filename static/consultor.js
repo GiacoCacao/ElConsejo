@@ -37,46 +37,68 @@ function expertoPorNombre(n) {
   for (const p of paneles) { if (p.tipo === 'asamblea') continue; const a = p.agentes.find(x => sinAcentos(x.nombre) === k || (k && sinAcentos(x.nombre).includes(k))); if (a) return { p, a }; }
   return null;
 }
+function destinoRec(rec) {
+  const pans = (rec.paneles || []).map(panelPorNombre).filter(Boolean);
+  const exp = rec.experto ? expertoPorNombre(rec.experto) : null;
+  const amb = rec.ambiente === 'individual' && exp ? 'despacho' : rec.ambiente === 'asamblea' && pans.length > 1 ? 'asamblea' : pans[0] ? 'panel' : null;
+  const nombre = amb === 'despacho' ? `el despacho de ${exp.a.nombre}` : amb === 'asamblea' ? `la Asamblea (${pans.length} comités)` : amb === 'panel' ? pans[0].nombre : '';
+  return { pans, exp, amb, nombre };
+}
 function htmlRec(rec, i) {
   if (!rec || document.body.classList.contains('observador')) return '';
-  const pans = (rec.paneles || []).map(panelPorNombre).filter(Boolean);
-  const exp = rec.experto ? expertoPorNombre(rec.experto) : null;
-  const botones = [];
-  if (rec.planteamiento) botones.push(`<button type="button" class="dorado peq" data-rec="${i}" data-acc="llevar"><span class="etq">Llevar al Consejo</span></button>`);
-  if (rec.ambiente === 'individual' && exp) botones.push(`<button type="button" class="contorno peq" data-rec="${i}" data-acc="despacho">${ico('persona')}<span>Despacho de ${esc(exp.a.nombre)}</span></button>`);
-  else if (rec.ambiente === 'asamblea' && pans.length) botones.push(`<button type="button" class="contorno peq" data-rec="${i}" data-acc="asamblea">${ico('mazo')}<span>Convocar la Asamblea (${pans.length} comités)</span></button>`);
-  else if (pans[0]) botones.push(`<button type="button" class="contorno peq" data-rec="${i}" data-acc="panel">${ico('flecha')}<span>Ir a ${esc(pans[0].nombre)}</span></button>`);
-  if (!botones.length) return '';
-  return `<div class="rec"><div class="sobre">Recomendación aplicable</div>
-    ${rec.orden_dia && rec.orden_dia.length > 1 ? `<div class="nota peq" style="margin:0">Orden del día: ${rec.orden_dia.map((x, k) => `${k + 1}. ${esc(x)}`).join(' · ')}</div>` : ''}
-    <div class="acciones-rec">${botones.join('')}</div></div>`;
-}
-async function aplicarRec(rec, acc) {
-  const pans = (rec.paneles || []).map(panelPorNombre).filter(Boolean);
-  const exp = rec.experto ? expertoPorNombre(rec.experto) : null;
+  const { amb, nombre } = destinoRec(rec);
+  if (!amb) return '';
   const orden = (rec.orden_dia || []).filter(Boolean);
-  const amb = acc === 'llevar' ? (rec.ambiente === 'individual' && exp ? 'despacho' : rec.ambiente === 'asamblea' && pans.length ? 'asamblea' : 'panel') : acc;
+  return `<div class="rec"><div class="sobre">Recomendación · ${esc(nombre)}</div>
+    ${rec.planteamiento ? `<div class="sintesis" data-sint="${i}"><b>${esc(rec.asunto || 'Síntesis del caso')}</b><p>${esc(rec.planteamiento)}</p>
+      ${orden.length > 1 ? `<small>Orden del día: ${orden.map((x, k) => `${k + 1}. ${esc(x)}`).join(' · ')}</small>` : ''}</div>` : ''}
+    <div class="acciones-rec">
+      ${rec.planteamiento ? `<button type="button" class="dorado peq" data-rec="${i}" data-acc="iniciar">${ico('mazo')}<span class="etq">Iniciar sesión con esta síntesis</span></button>
+        <button type="button" class="enlace peq" data-rec="${i}" data-acc="editar">Editar antes</button>` : ''}
+      <button type="button" class="contorno peq" data-rec="${i}" data-acc="ir">${ico('flecha')}<span>Solo ir</span></button>
+    </div></div>`;
+}
+// iniciar: abre el ambiente, abre la sesión con asunto y orden del día y plantea el caso. editar: deja el texto listo.
+async function aplicarRec(rec, acc) {
+  const { pans, exp, amb } = destinoRec(rec);
+  const orden = (rec.orden_dia || []).filter(Boolean);
+  const asunto = (rec.asunto || rec.planteamiento || '').slice(0, 200);
+  const caso = rec.planteamiento || '';
   $('#consultor').close();
-  if (amb === 'despacho' && exp) await irA('individual', { panel: exp.p.id, agente: exp.a.id });
-  else if (amb === 'asamblea') {
+  if (amb === 'asamblea') {
     await irA('asamblea');
-    if (sesion) { avisar('La Asamblea ya está reunida: cierre la sesión en curso para convocar otra.', true); }
-    else {
-      await abrirConvocatoria();
-      $('#formAsamblea').asunto.value = (rec.planteamiento || '').slice(0, 200);
-      $('#formAsamblea').orden_dia.value = orden.join('\n');
-      asaSel = {}; for (const p of pans) asaSel[p.id] = new Set([p.agentes[0].id]);
-      pintarComites();
+    if (sesion) {
+      if (acc !== 'ir' && caso && await confirmar(`La Asamblea ya está reunida (sesión nº ${sesion.numero}). ¿Plantear el caso en ella?`, 'Plantear')) plantear(caso, acc);
+      return;
     }
-  } else if (pans[0] || panel) {
-    await irA('panel', { panel: (pans[0] || panel).id });
-    if (orden.length > 1 && !sesion) {
-      await abrirDlgSesion(null);
-      $('#formSesion').asunto.value = (rec.planteamiento || '').slice(0, 200);
-      $('#formSesion').orden_dia.value = orden.join('\n');
-    }
+    if (acc === 'ir') return;
+    await abrirConvocatoria();
+    $('#formAsamblea').asunto.value = asunto;
+    $('#formAsamblea').orden_dia.value = orden.join('\n');
+    asaSel = {}; for (const p of pans) asaSel[p.id] = new Set([p.agentes[0].id]);
+    pintarComites();
+    casoPendiente = { texto: caso, enviar: acc === 'iniciar' };   // al convocar, se plantea
+    avisar('Revise los comités y delegados y pulse «Convocar la Asamblea»: el caso se planteará a continuación.');
+    return;
   }
-  if (rec.planteamiento && acc === 'llevar') { $('#texto').value = rec.planteamiento; autoAlto(); $('#texto').focus(); }
+  if (amb === 'despacho') await irA('individual', { panel: exp.p.id, agente: exp.a.id });
+  else await irA('panel', { panel: pans[0].id });
+  if (acc === 'ir' || !caso) return;
+  if (sesion && sesion.consultas) {
+    if (!await confirmar(`Este consejo tiene abierta la sesión nº ${sesion.numero} («${sesion.asunto}»). ¿Plantear el caso en ella? Si prefiere una sesión nueva, cierre antes la actual.`, 'Plantear en ella')) return;
+  } else if (!sesion) {
+    try {
+      await api(`/api/paneles/${panel.id}/sesiones`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ asunto, orden_dia: orden, modo_debate: 'orden', individual: enDespacho() ? expertoInd.agente : undefined }) });
+      await refrescarSesion(); avisar(`Sesión nº ${sesion.numero} abierta: «${asunto}».`);
+    } catch (e) { return avisar(e.message, true); }
+  }
+  plantear(caso, acc);
+}
+let casoPendiente = null;
+function plantear(texto, acc) {
+  $('#texto').value = texto; autoAlto();
+  if (acc === 'iniciar') $('#chat').requestSubmit(); else $('#texto').focus();
 }
 function consPintar() {
   const box = $('#consHist');
@@ -94,6 +116,7 @@ function consPintar() {
       ${htmlRec(rec, i)}
       <div class="hora">${h.panel ? esc(h.panel) + ' · ' : ''}${new Date(h.ts).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div></div>`; }).join('');
   box.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { const r = partirRespuesta(consHist[+b.dataset.rec].r).rec; if (r) aplicarRec(r, b.dataset.acc); });
+  box.querySelectorAll('.sintesis p').forEach(p => p.title = 'Síntesis preparada por el Asistente');
   box.scrollTop = box.scrollHeight;
 }
 async function consPreguntar(etiqueta) {
@@ -110,6 +133,7 @@ async function consPreguntar(etiqueta) {
       item.r += x;
       if (!raf) raf = requestAnimationFrame(() => { raf = 0; const c = caja(); if (c) { c.innerHTML = md(partirRespuesta(item.r).texto); $('#consHist').scrollTop = $('#consHist').scrollHeight; } });
     }, { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pregunta: p, contexto: item.ctx, modo,
+         historial: consHist.slice(0, -1).filter(h => h.r && !h.error).slice(-3).map(h => ({ p: h.p, r: h.r })),
          panel_id: panel && ambiente !== 'inicio' ? panel.id : null,
          ambiente: { inicio: 'menú principal', panel: 'consulta de panel', asamblea: 'Asamblea General', individual: 'consulta individual' }[ambiente] }) });
     item.r = fin.texto || item.r;

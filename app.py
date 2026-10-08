@@ -767,8 +767,11 @@ SISTEMA_ASISTENTE = (
     "4) ordenar el planteamiento de una consulta antes de presentarla. No opinas sobre el fondo del asunto ni lo resuelves: "
     "ayudas a plantearlo bien y a elegir a quién preguntar. Respondes en español, claro y breve (máximo 220 palabras salvo "
     "que se pida detalle), con negritas para lo importante. Cuando recomiendes un panel, comités o un experto concretos, "
-    "termina con un bloque ```json {\"ambiente\": \"panel|asamblea|individual\", \"paneles\": [\"nombre exacto\"], "
-    "\"experto\": \"nombre exacto o null\"}```.")
+    "termina SIEMPRE con un bloque ```json {\"ambiente\": \"panel|asamblea|individual\", \"paneles\": [\"nombre exacto\"], "
+    "\"experto\": \"nombre exacto o null\", \"asunto\": \"título breve del caso (máx. 12 palabras)\", \"planteamiento\": "
+    "\"síntesis del caso lista para presentarla al Consejo: contexto, datos que dio el usuario y la pregunta concreta, en "
+    "primera persona, como habla quien consulta (sin presentarse como «la presidencia»), máximo 120 palabras; no inventes datos\", \"orden_dia\": [\"puntos, si conviene\"]}```. "
+    "Si recomiendas expertos de varios paneles, el ambiente es «asamblea» con esos paneles como comités.")
 
 MODOS_ASISTENTE = {
     "termino": "Aclara el término con este formato: **Definición:** … (acepciones si es ambiguo) · **En este contexto:** … (si "
@@ -777,7 +780,7 @@ MODOS_ASISTENTE = {
                "la pregunta concreta y lo que se espera de los expertos (máximo 120 palabras); **Orden del día:** de 1 a 4 "
                "puntos si conviene; **Recomendación:** ambiente, panel o comités y 2-3 expertos clave, con el porqué. "
                "Si recomiendas expertos de VARIOS paneles, el ambiente es «asamblea» con esos paneles como comités (en una consulta de "
-               "panel solo intervienen los de un panel). Termina SIEMPRE con un bloque ```json {\"planteamiento\": \"…\", \"orden_dia\": [\"…\"], \"ambiente\": "
+               "panel solo intervienen los de un panel). Termina SIEMPRE con un bloque ```json {\"asunto\": \"título breve\", \"planteamiento\": \"…\", \"orden_dia\": [\"…\"], \"ambiente\": "
                "\"panel|asamblea|individual\", \"paneles\": [\"nombre exacto\"], \"experto\": \"nombre exacto o null\"}```.",
 }
 
@@ -806,8 +809,11 @@ def asistente():
     if contexto:
         datos.append(f"Pasaje donde aparece: «{contexto}»")
     instruccion = MODOS_ASISTENTE.get(modo, "")
-    msgs = [{"role": "system", "content": f"{SISTEMA_ASISTENTE}\n\nHoy es {fecha_actual()}.\n\n{GUIA}\n\nCATÁLOGO DE PANELES:\n{cat}"},
-            {"role": "user", "content": "\n".join(datos) + "\n\n" + (instruccion + "\n\n" if instruccion else "")
+    msgs = [{"role": "system", "content": f"{SISTEMA_ASISTENTE}\n\nHoy es {fecha_actual()}.\n\n{GUIA}\n\nCATÁLOGO DE PANELES:\n{cat}"}]
+    for h in (d.get("historial") or [])[-4:]:   # la conversación reciente: la síntesis recoge lo ya contado
+        if isinstance(h, dict) and h.get("p") and h.get("r"):
+            msgs += [{"role": "user", "content": str(h["p"])[:1500]}, {"role": "assistant", "content": str(h["r"])[:2500]}]
+    msgs += [{"role": "user", "content": "\n".join(datos) + "\n\n" + (instruccion + "\n\n" if instruccion else "")
              + ("Planteamiento: " if modo == "ordenar" else "Consulta: ") + pregunta}]
 
     def gen():

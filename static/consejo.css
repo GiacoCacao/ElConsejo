@@ -722,7 +722,11 @@ body.amb-inicio .selector{visibility:hidden}
 .cons-rapidas button:hover{border-color:var(--oro);color:var(--oro-claro)}
 .rec{margin:10px 14px 4px;padding:12px 14px;border:1px solid var(--linea-fuerte);border-radius:2px;background:rgba(201,169,110,.05)}
 .rec .sobre{margin-bottom:6px}
-.rec .acciones-rec{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.rec .acciones-rec{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center}
+.sintesis{border-left:2px solid var(--oro);padding:6px 0 6px 12px;margin:4px 0 2px}
+.sintesis b{display:block;font:500 16px var(--serif);color:var(--oro-claro)}
+.sintesis p{margin:4px 0 0;font-size:12.5px;line-height:1.6;color:var(--marfil)}
+.sintesis small{display:block;margin-top:6px;font-size:11px;color:var(--humo)}
 
 .opinen{display:flex;align-items:center;gap:12px;margin-top:18px;padding-top:14px;border-top:1px dashed var(--linea)}
 .opinen span{flex:1;font:italic 15px var(--serif);color:var(--humo)}

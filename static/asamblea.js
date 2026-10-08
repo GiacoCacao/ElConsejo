@@ -145,7 +145,9 @@ $('#formAsamblea').onsubmit = async e => {
     $('#dlgAsamblea').close();
     const asam = paneles.find(p => p.tipo === 'asamblea');
     ultimoPanel = null; await cargar(asam.id);
-    avisar(`Asamblea convocada: ${comites.length} comités, ${total} delegados. Plantee el asunto para abrir la ronda de posiciones.`);
-    $('#texto').value = e.target.asunto.value.trim(); autoAlto(); $('#texto').focus();
+    avisar(`Asamblea convocada: ${comites.length} comités, ${total} delegados.${typeof casoPendiente !== 'undefined' && casoPendiente ? '' : ' Plantee el asunto para abrir la ronda de posiciones.'}`);
+    if (typeof casoPendiente !== 'undefined' && casoPendiente) {   // viene del Asistente: se plantea el caso sintetizado
+      const c = casoPendiente; casoPendiente = null; plantear(c.texto, c.enviar ? 'iniciar' : 'editar');
+    } else { $('#texto').value = e.target.asunto.value.trim(); autoAlto(); $('#texto').focus(); }
   } catch (err) { avisar(err.message, true); }
 };

@@ -34,7 +34,9 @@ Además, accesos al Asistente, Sesiones (con las que están en curso), Bibliotec
 Asesor interno fuera del hemiciclo (antes «Consultor general»). Conoce cómo funciona El Consejo y el catálogo de
 paneles y expertos: explica el funcionamiento, **recomienda** ambiente, panel o expertos para un caso, **ordena el
 planteamiento** antes de consultar (planteamiento reformulado, orden del día y recomendación, con un botón «Llevar al
-Consejo» que abre el ambiente con todo preparado) y aclara términos seleccionados en cualquier respuesta o acta.
+Consejo» que abre el ambiente con todo preparado) y aclara términos seleccionados en cualquier respuesta o acta. Cada recomendación trae una **síntesis del caso** (con lo
+hablado en la conversación) y el botón **«Iniciar sesión con esta síntesis»**: abre el ambiente, inicia la sesión con
+su asunto y orden del día y plantea el caso, sin volver a escribirlo.
 
 ## Asamblea General
 
