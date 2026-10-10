@@ -960,8 +960,35 @@ def ver_consumo(pid):
 
 @app.get("/api/tarifas")
 def ver_tarifas():
+    """Tarifas: por defecto solo las propias y las de modelos en uso; ?q= busca en toda la base."""
+    q = (request.args.get("q") or "").strip().lower()
     with bd.db() as c:
-        return jsonify(tarifas=list(consumo.tarifas(c).values()), fuente=consumo.FUENTE, modelo=config.IA_MODELO)
+        tars = consumo.tarifas(c)
+        usados = {r[0] for r in c.execute("SELECT DISTINCT modelo FROM consumo")} | {config.IA_MODELO}
+        for r in c.execute("SELECT agentes FROM paneles"):
+            for a in json.loads(r["agentes"] or "[]"):
+                usados.add(proveedores.destino(a)[2])
+    en_uso = {}
+    for m in usados:
+        t = tars.get(m)
+        en_uso[m] = t["modelo"] if t else None
+    if q:
+        lista = [t for k, t in tars.items() if q in k.lower() or q in (t.get("proveedor") or "").lower()][:60]
+    else:
+        visibles = {v for v in en_uso.values() if v}
+        lista = [t for k, t in tars.items() if t.get("origen") in ("manual", "serie") or k in visibles]
+    return jsonify(tarifas=lista, en_uso=en_uso, total=len(tars), estado=consumo.estado_tarifas(),
+                   fuente=consumo.FUENTE, modelo=config.IA_MODELO)
+
+
+@app.post("/api/tarifas/actualizar")
+def actualizar_tarifas():
+    solo_presidencia()
+    try:
+        n = consumo.actualizar_tarifas()
+    except Exception as e:  # noqa: BLE001
+        return jsonify(error=f"No se pudieron descargar las tarifas: {e}"[:300]), 502
+    return jsonify(modelos=n, estado=consumo.estado_tarifas())
 
 
 @app.put("/api/tarifas/<path:modelo>")
@@ -972,8 +999,8 @@ def guardar_tarifa(modelo):
     except (ValueError, TypeError) as e:
         return jsonify(error=str(e)), 400
     with bd.db() as c:
-        c.execute(f"INSERT OR REPLACE INTO tarifas(modelo,{','.join(consumo.CAMPOS)}) VALUES(?,{','.join('?' * len(consumo.CAMPOS))})",
-                  (modelo, *[t[k] for k in consumo.CAMPOS]))
+        c.execute(f"INSERT OR REPLACE INTO tarifas(modelo,{','.join(consumo.CAMPOS)},origen,actualizado) "
+                  f"VALUES(?,{','.join('?' * len(consumo.CAMPOS))},'manual',?)", (modelo, *[t[k] for k in consumo.CAMPOS], time.time()))
     return jsonify(ok=True)
 
 
@@ -1087,6 +1114,7 @@ def arrancar():
         asamblea.panel_id(c)
     if not os.environ.get("CONSEJO_SIN_COPIAS"):
         copias.arrancar()
+        consumo.arrancar_actualizacion()
 
 
 arrancar()

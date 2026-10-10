@@ -4,8 +4,12 @@ Los precios están en USD por millón de tokens. Las tarifas de serie se siembra
 `tarifas` y desde ahí se pueden editar (panel «Consumo»); el coste se calcula al consultar, con
 la tarifa vigente y la franja horaria en la que se hizo cada llamada.
 """
+import re
+import threading
 import time
 from datetime import datetime, timezone
+
+import requests
 
 import bd
 import config
@@ -30,12 +34,110 @@ def es_punta(ts, franja):
 
 def sembrar(c):
     for modelo, t in TARIFAS_BASE.items():
-        c.execute(f"INSERT OR IGNORE INTO tarifas(modelo,{','.join(CAMPOS)}) VALUES(?,{','.join('?' * len(CAMPOS))})",
-                  (modelo, *[t.get(k) for k in CAMPOS]))
+        c.execute(f"INSERT OR IGNORE INTO tarifas(modelo,{','.join(CAMPOS)},origen,actualizado) "
+                  f"VALUES(?,{','.join('?' * len(CAMPOS))},'serie',?)", (modelo, *[t.get(k) for k in CAMPOS], time.time()))
+    c.execute("UPDATE tarifas SET origen='serie' WHERE origen IS NULL AND modelo IN (%s)" % ",".join("?" * len(TARIFAS_BASE)),
+              list(TARIFAS_BASE))
+    c.execute("UPDATE tarifas SET origen='manual' WHERE origen IS NULL")
+
+
+def normalizar(modelo):
+    """Nombre comparable entre proveedores: sin prefijo «proveedor/», puntos como guiones, sin fecha ni «-latest».
+    claude-sonnet-5-5 = anthropic/claude-sonnet-5.5 = claude-sonnet-5-5-20260901."""
+    m = (modelo or "").strip().lower().lstrip("~")
+    m = m.split("/")[-1].split(":")[0]
+    m = m.replace(".", "-").replace("_", "-")
+    m = re.sub(r"-(latest|preview)$", "", m)
+    m = re.sub(r"-(20\d{6}|\d{4})$", "", m)   # sufijo de fecha (20260901) o de versión (0813)
+    return m
+
+
+class Tarifas(dict):
+    """Diccionario de tarifas que también encuentra el modelo por su nombre normalizado."""
+
+    def __init__(self, filas):
+        super().__init__(filas)
+        prioridad = {"manual": 0, "serie": 1, "openrouter": 2}
+        self._norm = {}
+        for k, t in sorted(self.items(), key=lambda kv: prioridad.get(kv[1].get("origen"), 3)):
+            self._norm.setdefault(normalizar(k), t)
+
+    def get(self, modelo, defecto=None):
+        if not modelo:
+            return defecto
+        return super().get(modelo) or self._norm.get(normalizar(modelo)) or defecto
 
 
 def tarifas(c):
-    return {r["modelo"]: dict(r) for r in c.execute("SELECT * FROM tarifas ORDER BY proveedor, modelo")}
+    return Tarifas({r["modelo"]: dict(r) for r in c.execute("SELECT * FROM tarifas ORDER BY proveedor, modelo")})
+
+
+# ---- base de tarifas actualizada (OpenRouter publica los precios de cientos de modelos) ------------
+URL_PRECIOS = "https://openrouter.ai/api/v1/models"
+PROVEEDORES = {"openai": "OpenAI", "anthropic": "Anthropic", "google": "Google", "mistralai": "Mistral", "x-ai": "xAI",
+               "deepseek": "DeepSeek", "meta-llama": "Meta", "qwen": "Qwen", "cohere": "Cohere", "moonshotai": "Moonshot",
+               "z-ai": "Z.ai", "amazon": "Amazon", "microsoft": "Microsoft", "nvidia": "NVIDIA", "perplexity": "Perplexity"}
+
+
+def actualizar_tarifas():
+    """Descarga los precios vigentes y los guarda (origen «openrouter»). No toca las tarifas manuales ni las de serie
+    (DeepSeek directo tiene franja punta/valle, que OpenRouter no refleja). → nº de modelos actualizados."""
+    r = requests.get(URL_PRECIOS, timeout=30)
+    r.raise_for_status()
+    ahora, filas = time.time(), []
+    for m in r.json().get("data", []):
+        mid = m.get("id") or ""
+        if mid.startswith("~") or ":" in mid or "/" not in mid:   # alias móviles y variantes (batch, free…)
+            continue
+        p = m.get("pricing") or {}
+        try:
+            entrada, salida = float(p.get("prompt") or 0) * 1e6, float(p.get("completion") or 0) * 1e6
+            cache = float(p["input_cache_read"]) * 1e6 if p.get("input_cache_read") not in (None, "") else None
+        except (TypeError, ValueError):
+            continue
+        if entrada <= 0 and salida <= 0:
+            continue
+        vendor, nombre = mid.split("/", 1)
+        filas.append((nombre, PROVEEDORES.get(vendor, vendor.capitalize()), m.get("context_length"),
+                      round(entrada, 6), None if cache is None else round(cache, 6), round(salida, 6), ahora))
+    if not filas:
+        raise RuntimeError("La fuente de precios no devolvió modelos")
+    with bd.db() as c:
+        propias = {r["modelo"] for r in c.execute("SELECT modelo FROM tarifas WHERE origen IN ('manual','serie')")}
+        normal_propias = {normalizar(x) for x in propias}
+        n = 0
+        for f in filas:
+            if f[0] in propias or normalizar(f[0]) in normal_propias:
+                continue
+            c.execute("INSERT INTO tarifas(modelo,proveedor,contexto,entrada,cache,salida,origen,actualizado) "
+                      "VALUES(?,?,?,?,?,?,'openrouter',?) ON CONFLICT(modelo) DO UPDATE SET proveedor=excluded.proveedor, "
+                      "contexto=excluded.contexto, entrada=excluded.entrada, cache=excluded.cache, salida=excluded.salida, "
+                      "actualizado=excluded.actualizado WHERE tarifas.origen='openrouter'", f)
+            n += 1
+    bd.fijar_ajuste("tarifas_actualizadas", ahora)
+    bd.fijar_ajuste("tarifas_modelos", n)
+    return n
+
+
+def estado_tarifas():
+    t = bd.ajuste("tarifas_actualizadas")
+    return {"actualizadas": float(t) if t else None, "modelos": int(bd.ajuste("tarifas_modelos", 0) or 0),
+            "fuente": "openrouter.ai (precios públicos por modelo)"}
+
+
+def _bucle_tarifas():
+    while True:
+        try:
+            t = bd.ajuste("tarifas_actualizadas")
+            if not t or time.time() - float(t) > 3 * 24 * 3600:   # cada 3 días
+                actualizar_tarifas()
+        except Exception as e:  # noqa: BLE001 — sin red no pasa nada: siguen valiendo las guardadas
+            print(f"[tarifas] no se pudieron actualizar: {e}", flush=True)
+        time.sleep(6 * 3600)
+
+
+def arrancar_actualizacion():
+    threading.Thread(target=_bucle_tarifas, daemon=True, name="tarifas").start()
 
 
 def estimar(mensajes, texto):
@@ -107,6 +209,8 @@ def resumen(panel):
         ctx = (t or {}).get("contexto")
         agentes.append({
             "id": a["id"], "nombre": a["nombre"], "modelo": modelo, "tarifa": bool(t),
+            "precio": {"entrada": t["entrada"], "salida": t["salida"], "modelo": t["modelo"], "origen": t.get("origen")} if t else None,
+            "proveedor": proveedores.destino(a)[3] or (t or {}).get("proveedor"),
             **{k: v for k, v in _suma(suyas, tars).items()},
             "ultima": _suma([f for f in consultas if f["pregunta_id"] == ult], tars) if ult else None,
             "contexto_usado": ultima["entrada"] if ultima else 0, "contexto_max": ctx,
@@ -122,6 +226,8 @@ def resumen(panel):
         "ultima": _suma([f for f in del_panel if f["pregunta_id"] == ult and f["tipo"] != "resumen"], tars) if ult else None,
         "global": _suma(todas, tars),
         "agentes": agentes,
+        "sin_tarifa": sorted({f["modelo"] for f in todas if not tars.get(f["modelo"])}),
+        "tarifas": estado_tarifas(),
         "gasto": estado_gasto(),
     }
 

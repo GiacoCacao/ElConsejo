@@ -131,6 +131,13 @@ experto, por panel, por bibliotecas y global. El coste sale de los tokens que in
 y de la tabla de tarifas (USD por millón de tokens), que se puede editar y ampliar con otros modelos.
 Las de DeepSeek vienen de serie, con su precio doble en hora punta (01–04 y 06–10 UTC, lunes a viernes).
 
+**Base de tarifas actualizada**: al arrancar y cada 3 días se descargan los precios públicos de cientos de modelos
+(OpenAI, Anthropic, Google, Mistral, xAI, DeepSeek… vía `openrouter.ai/api/v1/models`) para que cualquier proveedor
+tenga coste. Los nombres se emparejan aunque el proveedor los escriba distinto (`claude-sonnet-5-5` =
+`anthropic/claude-sonnet-5.5`, sufijos de fecha o `-latest`). Prioridad: tarifa **manual** > **oficial** de serie >
+**base**; la actualización nunca pisa las dos primeras. Se puede forzar con «Actualizar tarifas» y buscar cualquier
+modelo en el detalle de Consumo, donde cada experto muestra su proveedor y el precio que se le aplica.
+
 ## Paneles de serie
 
 Se crean una sola vez al arrancar (`paneles_base.py`); si se borran, no vuelven: **Empresarial**,

@@ -64,7 +64,9 @@ MIGRACIONES = [("mensajes", "ronda", "INTEGER DEFAULT 0"),
                ("sesiones", "receso", "INTEGER DEFAULT 0"),  # cuarto intermedio
                ("mensajes", "punto", "INTEGER DEFAULT 0"),
                ("votaciones", "punto", "INTEGER DEFAULT 0"),
-               ("sesiones", "individual", "TEXT")]        # consulta individual: el experto del despacho
+               ("sesiones", "individual", "TEXT"),
+               ("tarifas", "origen", "TEXT"),             # serie | manual | openrouter
+               ("tarifas", "actualizado", "REAL")]        # consulta individual: el experto del despacho
 
 
 @contextmanager

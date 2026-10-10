@@ -541,7 +541,10 @@ function pintarConsumo() {
   const d = consumoDatos; if (!d) return;
   const s = d.servicio, t = s.tarifa;
   $('#consumo').hidden = false;
-  $('#cSvc').innerHTML = `<b>${esc(s.proveedor)}</b> ${esc(s.modelo)}`
+  const provs = [...new Set(d.agentes.map(a => a.proveedor || s.proveedor))];
+  $('#cSvc').innerHTML = provs.length > 1
+    ? `<b title="${esc(d.agentes.map(a => `${a.nombre}: ${a.proveedor || s.proveedor} · ${a.modelo}`).join('\n'))}">${provs.map(esc).join(' + ')}</b>`
+    : `<b>${esc(s.proveedor)}</b> ${esc(s.modelo)}`
     + (t && t.franja ? ` <em class="${s.punta ? 'punta' : ''}" title="${s.punta ? 'Hora punta: tarifa doble' : 'Fuera de hora punta'}">${s.punta ? 'punta' : 'valle'}</em>` : '');
   $('#consumo .led').classList.toggle('off', !t);
   const conPct = d.agentes.filter(a => a.pct != null);
@@ -564,33 +567,51 @@ function pintarDetalleConsumo() {
     <div class="det">${s ? `${nf(s.llamadas)} llamadas · ↑ ${fTok(s.entrada)} ↓ ${fTok(s.salida)}${s.cache ? ` · caché ${fTok(s.cache)}` : ''}` : 'Sin consultas'}${extra}</div></div>`;
   const filas = d.agentes.map(a => {
     const ag = panel.agentes.find(x => x.id === a.id) || {};
-    return `<tr><td><div class="quien"><span style="--c:${ag.color}">${esc(monograma(ag))}</span><div>${esc(a.nombre)}<small>${esc(a.modelo)}${a.tarifa ? '' : ' · sin tarifa'}</small></div></div></td>
+    return `<tr><td><div class="quien"><span style="--c:${ag.color}">${esc(monograma(ag))}</span><div>${esc(a.nombre)}<small>${a.proveedor ? esc(a.proveedor) + ' · ' : ''}${esc(a.modelo)}${a.precio ? ` · ${nf(a.precio.entrada, 2)} / ${nf(a.precio.salida, 2)} US$/M` : ' · <b class="sin-tarifa">sin tarifa</b>'}</small></div></div></td>
       <td>${a.pct == null ? '—' : `<span class="medidor${a.pct > 75 ? ' alto' : ''}"><i style="width:${Math.min(100, Math.max(1.5, a.pct))}%"></i></span>${nf(a.pct, a.pct < 10 ? 1 : 0)} %`}<small>${a.contexto_usado ? fTok(a.contexto_usado) + ' de ' + fTok(a.contexto_max) : ''}</small></td>
       <td class="opt">${fTok(a.entrada)}</td><td class="opt">${fTok(a.salida)}</td><td>${nf(a.llamadas)}</td>
       <td>${a.ultima && a.ultima.llamadas ? fUSD(a.ultima.coste) : '—'}</td><td>${fUSD(a.coste)}</td></tr>`;
   }).join('');
   const s = d.servicio;
   $('#consumoCuerpo').innerHTML = `
+    ${d.sin_tarifa && d.sin_tarifa.length ? `<p class="nota aviso">Sin tarifa conocida: <b>${d.sin_tarifa.map(esc).join(', ')}</b>. Sus llamadas no suman coste: pulse «Actualizar tarifas» o añada su precio abajo.</p>` : ''}
     <div class="tiles">${tile('Última consulta', d.ultima)}${tile('Este panel', d.panel)}${tile('Bibliotecas · resúmenes', d.pools)}${tile('Total general', d.global)}</div>
     <table class="tabla"><thead><tr><th>Experto</th><th>Contexto (última)</th><th class="opt">Entrada</th><th class="opt">Salida</th><th>Llamadas</th><th>Última</th><th>Acumulado</th></tr></thead>
     <tbody>${filas}</tbody><tfoot><tr><td>Panel</td><td></td><td class="opt">${fTok(d.panel.entrada)}</td><td class="opt">${fTok(d.panel.salida)}</td><td>${nf(d.panel.llamadas)}</td><td>${d.ultima ? fUSD(d.ultima.coste) : '—'}</td><td>${fUSD(d.panel.coste)}</td></tr></tfoot></table>
     <p class="nota peq">Costes aproximados en dólares a partir de los tokens que informa la API${d.global.estimado ? ' (algunas llamadas sin datos de uso se han estimado por longitud del texto)' : ''}.
       ${s.tarifa && s.tarifa.franja ? `Servicio en <b>${s.punta ? 'hora punta' : 'franja valle'}</b> ahora mismo: DeepSeek cobra el doble de 01:00 a 04:00 y de 06:00 a 10:00 UTC, de lunes a viernes; cada llamada se valora con su franja.` : ''}
       Fuente de las tarifas de serie: ${esc(s.fuente)}.</p>
-    <h3 class="sub">Tarifas por modelo <small class="nota peq" style="margin:0">USD por millón de tokens · editables</small><span class="grow"></span><button type="button" id="nuevaTarifa" class="contorno">${ico('mas')}<span>Añadir modelo</span></button></h3>
+    <h3 class="sub">Tarifas por modelo <small class="nota peq" style="margin:0">USD por millón de tokens</small><span class="grow"></span>
+      <button type="button" id="actTarifas" class="enlace peq">${ico('repetir')}<span>Actualizar tarifas</span></button>
+      <button type="button" id="nuevaTarifa" class="contorno">${ico('mas')}<span>Añadir modelo</span></button></h3>
+    <div class="tar-cab"><input id="buscaTarifa" class="busca" placeholder="Buscar en la base de tarifas (gpt, claude, gemini, mistral…)" autocomplete="off">
+      <span class="nota peq" id="estadoTarifas"></span></div>
     <table class="tabla" id="tablaTarifas"><thead><tr><th>Modelo</th><th>Contexto</th><th>Entrada</th><th>Caché</th><th>Salida</th><th class="opt">Entrada punta</th><th class="opt">Caché punta</th><th class="opt">Salida punta</th><th></th></tr></thead><tbody></tbody></table>`;
   pintarTarifas();
   $('#nuevaTarifa').onclick = () => filaTarifa({ modelo: '', contexto: 128000 }, true);
+  $('#buscaTarifa').oninput = () => { clearTimeout(buscaT); buscaT = setTimeout(pintarTarifas, 250); };
+  $('#actTarifas').onclick = async () => {
+    const b = $('#actTarifas'); b.disabled = true; b.querySelector('span').textContent = 'Actualizando…';
+    try { const r = await api('/api/tarifas/actualizar', { method: 'POST' }); avisar(`Tarifas actualizadas: ${nf(r.modelos)} modelos.`); cargarConsumo(); }
+    catch (e) { avisar(e.message, true); b.disabled = false; b.querySelector('span').textContent = 'Actualizar tarifas'; }
+  };
 }
+const ORIGEN_TAR = { serie: 'oficial', manual: 'manual', openrouter: 'base' };
 async function pintarTarifas() {
-  const r = await api('/api/tarifas');
+  const q = ($('#buscaTarifa') && $('#buscaTarifa').value.trim()) || '';
+  const r = await api('/api/tarifas' + (q ? '?q=' + encodeURIComponent(q) : ''));
   $('#tablaTarifas tbody').innerHTML = '';
   r.tarifas.forEach(t => filaTarifa(t, false));
+  if (!r.tarifas.length) $('#tablaTarifas tbody').innerHTML = '<tr><td colspan="9" class="ayuda">Ningún modelo coincide.</td></tr>';
+  const e = r.estado;
+  $('#estadoTarifas').innerHTML = e.actualizadas ? `Base de ${nf(r.total)} modelos · actualizada ${fechaHora(e.actualizadas)} (${esc(e.fuente)}); se renueva sola cada 3 días.${q ? '' : ' Se muestran las propias y las de modelos en uso.'}`
+    : 'La base de tarifas aún no se ha descargado: pulse «Actualizar tarifas».';
 }
+let buscaT = 0;
 function filaTarifa(t, nueva) {
   const tr = document.createElement('tr');
   const n = (k, v) => `<input data-k="${k}" inputmode="decimal" value="${v ?? ''}" placeholder="—">`;
-  tr.innerHTML = `<td>${nueva ? '<input class="mod" data-k="modelo" placeholder="nombre-del-modelo">' : `${esc(t.modelo)}<small>${esc(t.proveedor || '')}</small>`}</td>
+  tr.innerHTML = `<td>${nueva ? '<input class="mod" data-k="modelo" placeholder="nombre-del-modelo">' : `${esc(t.modelo)}<small>${esc(t.proveedor || '')}${t.origen ? ` · <em class="origen ${t.origen}">${ORIGEN_TAR[t.origen] || t.origen}</em>` : ''}</small>`}</td>
     <td>${n('contexto', t.contexto)}</td><td>${n('entrada', t.entrada)}</td><td>${n('cache', t.cache)}</td><td>${n('salida', t.salida)}</td>
     <td class="opt">${n('entrada_punta', t.entrada_punta)}</td><td class="opt">${n('cache_punta', t.cache_punta)}</td><td class="opt">${n('salida_punta', t.salida_punta)}</td>
     <td><button type="button" class="icono" title="Eliminar tarifa">${ico('papelera')}</button></td>`;

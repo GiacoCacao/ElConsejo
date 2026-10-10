@@ -110,3 +110,40 @@ def test_tarifas_editables(cliente):
     t = {x["modelo"]: x for x in cliente.get("/api/tarifas").get_json()["tarifas"]}
     assert t["mi-modelo"]["salida"] == 15 and "deepseek-flash" in t
     assert cliente.put("/api/tarifas/x", json={"entrada": -1, "salida": 1}).status_code == 400
+
+
+def test_base_de_tarifas_y_nombres_equivalentes(cliente, monkeypatch):
+    import bd
+    import consumo
+    assert consumo.normalizar("claude-sonnet-5-5") == consumo.normalizar("anthropic/claude-sonnet-5.5") \
+        == consumo.normalizar("claude-sonnet-5-5-20260901")
+    assert consumo.normalizar("deepseek-v4-pro-0813") == "deepseek-v4-pro"
+
+    class R:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"data": [
+                {"id": "anthropic/claude-sonnet-5.5", "context_length": 1000000,
+                 "pricing": {"prompt": "0.000002", "completion": "0.00001", "input_cache_read": "0.0000001"}},
+                {"id": "anthropic/claude-sonnet-5.5:batch", "pricing": {"prompt": "0.000001", "completion": "0.000005"}},
+                {"id": "~anthropic/claude-latest", "pricing": {"prompt": "1", "completion": "1"}},
+                {"id": "deepseek/deepseek-flash", "pricing": {"prompt": "0.0000009", "completion": "0.0000009"}},
+                {"id": "openai/gpt-5.6-sol", "context_length": 1050000, "pricing": {"prompt": "0.000002", "completion": "0.00001"}},
+            ]}
+    monkeypatch.setattr(consumo.requests, "get", lambda *a, **k: R())
+    assert cliente.post("/api/tarifas/actualizar").get_json()["modelos"] == 2   # sin variantes ni la de serie
+    with bd.db() as c:
+        tars = consumo.tarifas(c)
+        assert tars.get("deepseek-flash")["entrada"] == 0.15                  # la de serie no se pisa
+        t = tars.get("claude-sonnet-5-5")                                     # nombre del proveedor directo
+        assert t and t["entrada"] == 2 and t["salida"] == 10 and t["cache"] == 0.1 and t["origen"] == "openrouter"
+        # el caso de la prueba: 18.392 tokens de entrada y 2.514 de salida con Claude Sonnet 5.5
+        fila = {"ts": 0, "entrada": 18392, "salida": 2514, "cache": 0, "modelo": "claude-sonnet-5-5"}
+        assert round(consumo.coste(fila, tars.get(fila["modelo"])), 6) == round((18392 * 2 + 2514 * 10) / 1e6, 6)
+    # buscar en toda la base
+    assert any(x["modelo"] == "gpt-5.6-sol" for x in cliente.get("/api/tarifas?q=gpt").get_json()["tarifas"])
+    # una tarifa manual tiene prioridad y la actualización no la toca
+    cliente.put("/api/tarifas/claude-sonnet-5-5", json={"entrada": 3, "salida": 15})
+    cliente.post("/api/tarifas/actualizar")
+    with bd.db() as c:
+        assert consumo.tarifas(c).get("claude-sonnet-5-5")["entrada"] == 3
